@@ -785,12 +785,12 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
 
       if (eliminated) {
         showToast('💀 Vous êtes éliminé !');
-        onComplete(pointsRef.current, answersLog.length > 0 ? questions.length : 0, true);
+        onComplete(scoreRef.current, answersLog.length > 0 ? questions.length : 0, true);
         return;
       }
 
       if (forced) showToast('⏰ Temps écoulé !');
-      onComplete(pointsRef.current, answersLog.length > 0 ? questions.length : 0, false);
+      onComplete(scoreRef.current, answersLog.length > 0 ? questions.length : 0, false);
     },
     [playerId, answersLog.length, questions.length, onComplete, showToast]
   );
@@ -1153,6 +1153,12 @@ function ArenaScreen({ scoreData, onRetry }: any) {
   const totalQuestions = scoreData?.total || 1;
   const maxScore = totalQuestions * 10;
   const animatedScore = useCountUp(score, 2000);
+  const [showPanda, setShowPanda] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowPanda(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (eliminated) return;
@@ -1301,6 +1307,59 @@ function ArenaScreen({ scoreData, onRetry }: any) {
           Retour au menu
         </motion.button>
       )}
+
+      <AnimatePresence>
+        {showPanda && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 50, rotate: -2 }}
+              animate={{ scale: 1, y: 0, rotate: 0 }}
+              exit={{ scale: 0.8, y: 50, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-white rounded-[2.5rem] p-8 text-center max-w-sm w-full shadow-2xl relative overflow-hidden flex flex-col gap-4 items-center border-[3px] border-game-teal"
+            >
+              <motion.div
+                animate={{ y: [0, -10, 0], rotate: [0, 5, -5, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                className="text-7xl drop-shadow-md"
+              >
+                🐼
+              </motion.div>
+              <h2 className="text-3xl font-black text-gray-800 tracking-tight">Coucou !</h2>
+              <p className="text-lg text-gray-600 font-medium mb-2">
+                Veux-tu rejoindre <span className="text-game-indigo font-bold">Amphix</span> ?
+              </p>
+              
+              <div className="flex w-full gap-3 mt-2">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowPanda(false)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 rounded-2xl transition-colors"
+                >
+                  Non
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(52,199,89,0.3)' }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    window.open('https://wa.me/22946244549?text=je%20veux%20rejoindre%20amphix', '_blank');
+                    setShowPanda(false);
+                  }}
+                  className="flex-[2] bg-game-teal hover:bg-green-500 text-white font-black py-3 rounded-2xl shadow-lg transition-all"
+                >
+                  OH OUI !
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
