@@ -31,7 +31,8 @@ const useCountUp = (target: number, duration = 1500) => {
 
 // --- PARTICLE SYSTEM ---
 const FloatingParticles = () => {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
+  // Réduit à 10 particules pour améliorer les performances sur mobile (réduit le lag)
+  const particles = Array.from({ length: 10 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     y: Math.random() * 100,
@@ -462,7 +463,8 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 
   useEffect(() => {
     loadSession();
-    const id = setInterval(loadSession, 3000);
+    // Passage à 10 secondes pour éviter de surcharger la base de données avec 100 joueurs
+    const id = setInterval(loadSession, 10000);
     return () => clearInterval(id);
   }, []);
 
@@ -776,6 +778,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
   const [selectedOpt, setSelectedOpt] = useState<number | null>(null);
   const [answersLog, setAnswersLog] = useState<any[]>([]);
   const [showLifeAnimation, setShowLifeAnimation] = useState(false);
+  const [showLifeLossAnimation, setShowLifeLossAnimation] = useState(false);
 
   const finishGame = useCallback(
     async (forced = false, eliminated = false) => {
@@ -824,7 +827,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
           showToast("L'administrateur a arrêté la partie.", true);
         }
       } catch (e) {}
-    }, 3000);
+    }, 15000); // Vérification toutes les 15s au lieu de 3s pour économiser les requêtes DB
 
     return () => {
       clearInterval(intervalId);
@@ -859,6 +862,8 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
       }
     } else {
       newIndividualPoints = Math.max(0, newIndividualPoints - 1);
+      setShowLifeLossAnimation(true);
+      setTimeout(() => setShowLifeLossAnimation(false), 500);
     }
 
     setConsecutiveCorrect(newConsecutive);
@@ -948,7 +953,13 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
         </div>
 
         <motion.div
-          animate={showLifeAnimation ? { scale: [1, 1.5, 1], rotate: [0, 10, -10, 0] } : {}}
+          animate={
+            showLifeAnimation 
+              ? { scale: [1, 1.5, 1], rotate: [0, 10, -10, 0] } 
+              : showLifeLossAnimation 
+              ? { x: [-5, 5, -5, 5, 0], color: ['#ef4444', '#b91c1c', '#ef4444'] } 
+              : {}
+          }
           transition={{ duration: 0.5 }}
           className="flex items-center gap-1.5 font-black text-game-red text-xl"
         >
@@ -1152,7 +1163,7 @@ function ArenaScreen({ scoreData, onRetry }: any) {
   const score = scoreData?.score || 0;
   const totalQuestions = scoreData?.total || 1;
   const maxScore = totalQuestions * 10;
-  const animatedScore = useCountUp(score, 2000);
+  const animatedScore = score; // Affichage instantané
   const [showPanda, setShowPanda] = useState(false);
 
   useEffect(() => {

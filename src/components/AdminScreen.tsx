@@ -107,8 +107,6 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   const refresh = async () => {
     try {
       const s = await getActiveSession();
-            console.log('Admin refresh - session:', s);
-
       setSession(s);
       
       if (s && s.status === 'active') {
@@ -127,7 +125,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 3000);
+    const id = setInterval(refresh, 10000);
     return () => clearInterval(id);
   }, []);
 
@@ -181,19 +179,15 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
     const categoryStr = cats.join(',');
     
     try {
-     const insertData = {
-    start_time: new Date().toISOString(),
-    duration_seconds: duration * 60,
-    status: 'active',
-    categories: categoryStr,
-    validation_code: validationCode,
-    groups: groups.join(', '),
-    initial_points: initialPoints
-};
-console.log('Inserting:', insertData);
-const { data, error } = await supabase.from('sessions').insert(insertData).select().single();
-console.log('Insert result:', data, error);
-      
+      const { error } = await supabase.from('sessions').insert({
+        start_time: new Date().toISOString(),
+        duration_seconds: duration * 60,
+        status: 'active',
+        categories: categoryStr,
+        validation_code: validationCode,
+        groups: groups.join(', '),
+        initial_points: initialPoints
+      });
       if (error) {
         console.error("Insert session error:", error);
         setShowSqlInstruction(true);
@@ -347,7 +341,7 @@ console.log('Insert result:', data, error);
                  <div className="flex flex-wrap gap-2">
                    {groups.length === 0 && <span className="text-xs text-gray-400 italic">Aucun groupe</span>}
                    {groups.map((g, idx) => (
-                     <div key={idx} className="bg-blue-50 text-game-blue px-3 py-1.5 rounded-xl text-sm font-bold flex items-center gap-2 border border-blue-100">
+                     <div key={g} className="bg-blue-50 text-game-blue px-3 py-1.5 rounded-xl text-sm font-bold flex items-center gap-2 border border-blue-100">
                        {g}
                        <button onClick={() => {
                          const newGroups = groups.filter((_, i) => i !== idx);
@@ -582,9 +576,9 @@ console.log('Insert result:', data, error);
                   </h4>
                   {unusedCodes.length > 0 ? (
                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                       {unusedCodes.map((code, idx) => (
+                       {unusedCodes.map((code) => (
                          <button 
-                           key={idx} 
+                           key={code} 
                            onClick={() => copyToClipboard(code)}
                            className="bg-[#f0fff4] border border-[#d3f9de] text-[#1e8b41] hover:bg-[#d3f9de] font-black flex items-center justify-center py-4 rounded-2xl shadow-sm tracking-[0.2em] text-xl transition-colors cursor-pointer"
                            title="Copier le code"
@@ -607,8 +601,8 @@ console.log('Insert result:', data, error);
                   </h4>
                   {usedCodes.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {usedCodes.map((code, idx) => (
-                        <div key={idx} className="bg-gray-50 border border-gray-100 text-gray-400 font-bold flex items-center justify-center py-3 rounded-2xl tracking-[0.2em] text-lg relative overflow-hidden">
+                      {usedCodes.map((code) => (
+                        <div key={code} className="bg-gray-50 border border-gray-100 text-gray-400 font-bold flex items-center justify-center py-3 rounded-2xl tracking-[0.2em] text-lg relative overflow-hidden">
                           <span className="opacity-50 line-through decoration-2 decoration-gray-400">{code}</span>
                         </div>
                       ))}
