@@ -6,7 +6,41 @@ export default function SQLInstruction({ showToast }: { showToast: (m: string) =
   const [copied, setCopied] = React.useState(false);
 
   const sql = `
--- Exécutez ce code dans l'éditeur SQL de Supabase pour autoriser les écritures
+-- Exécutez ce code dans l'éditeur SQL de Supabase
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name text,
+  status text DEFAULT 'active',
+  duration_seconds int,
+  categories text,
+  validation_code text,
+  initial_points int DEFAULT 3,
+  groups text,
+  start_time timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS players (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  session_id uuid REFERENCES sessions(id),
+  name text,
+  group_name text,
+  individual_points int DEFAULT 3,
+  group_score int DEFAULT 0,
+  started_at timestamp with time zone DEFAULT now(),
+  finished_at timestamp with time zone
+);
+
+CREATE TABLE IF NOT EXISTS answers (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  player_id uuid REFERENCES players(id),
+  question_index int,
+  selected_option int,
+  is_correct boolean,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE players DISABLE ROW LEVEL SECURITY;
 ALTER TABLE answers DISABLE ROW LEVEL SECURITY;
@@ -18,6 +52,13 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS groups text;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS group_name text;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS individual_points int DEFAULT 3;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS group_score int DEFAULT 0;
+
+-- ACTIVER LE TEMPS RÉEL (REALTIME) POUR DE MEILLEURES PERFORMANCES ET SUPPORTER 100+ JOUEURS
+BEGIN;
+  DROP PUBLICATION IF EXISTS supabase_realtime;
+  CREATE PUBLICATION supabase_realtime;
+COMMIT;
+ALTER PUBLICATION supabase_realtime ADD TABLE sessions, players, answers;
   `.trim();
 
   const handleCopy = () => {

@@ -33,8 +33,20 @@ export default function LiveRankingScreen() {
     };
 
     fetchBoard();
-    const id = setInterval(fetchBoard, 10000); // 10s pour réduire la charge
-    return () => clearInterval(id);
+    
+    // Subscribe to realtime updates on players and sessions to be instantly updated if enabled by user
+    const channel = supabase.channel('public:liveranking')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => fetchBoard())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => fetchBoard())
+      .subscribe();
+
+    // Fallback polling (30s) in case realtime is not yet enabled in Supabase
+    const id = setInterval(fetchBoard, 30000); 
+
+    return () => {
+      clearInterval(id);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (

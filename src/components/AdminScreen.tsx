@@ -125,8 +125,19 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
 
   useEffect(() => {
     refresh();
-    const id = setInterval(refresh, 10000);
-    return () => clearInterval(id);
+
+    // Subscribe to realtime updates on players and sessions to be instantly updated if enabled by user
+    const channel = supabase.channel('public:admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => refresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => refresh())
+      .subscribe();
+
+    const id = setInterval(refresh, 30000); // 30s instead of 10s
+
+    return () => {
+      clearInterval(id);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchLeaderboard = async (sessionId: string) => {

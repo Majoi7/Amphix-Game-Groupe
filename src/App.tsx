@@ -463,9 +463,17 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 
   useEffect(() => {
     loadSession();
-    // Passage à 10 secondes pour éviter de surcharger la base de données avec 100 joueurs
-    const id = setInterval(loadSession, 10000);
-    return () => clearInterval(id);
+
+    const channel = supabase.channel('public:entry')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => loadSession())
+      .subscribe();
+
+    // Passage à 30 secondes pour éviter de surcharger la base de données avec 100 joueurs
+    const id = setInterval(loadSession, 30000);
+    return () => {
+      clearInterval(id);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadSession = async () => {
@@ -817,21 +825,26 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
     tick();
     intervalId = setInterval(tick, 1000);
 
-    const dbId = setInterval(async () => {
+    const checkStatus = async () => {
       try {
         const { data } = await supabase.from('sessions').select('status').eq('id', session.id).maybeSingle();
         if (data && data.status !== 'active') {
-          clearInterval(intervalId);
-          clearInterval(dbId);
           finishGame(false);
           showToast("L'administrateur a arrêté la partie.", true);
         }
       } catch (e) {}
-    }, 15000); // Vérification toutes les 15s au lieu de 3s pour économiser les requêtes DB
+    };
+
+    const channel = supabase.channel('public:quiz')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${session.id}` }, checkStatus)
+      .subscribe();
+
+    const dbId = setInterval(checkStatus, 30000); // 30s instead of 15s
 
     return () => {
       clearInterval(intervalId);
       clearInterval(dbId);
+      supabase.removeChannel(channel);
     };
   }, [session, questions, finishGame, showToast]);
 
