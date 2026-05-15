@@ -46,7 +46,7 @@ export default function LiveRankingScreen() {
 
             setTimeout(() => {
               setEliminatedPlayer(null);
-            }, 3000); 
+            }, 1000); 
           }
         }
         previousPlayersRef.current = players;
