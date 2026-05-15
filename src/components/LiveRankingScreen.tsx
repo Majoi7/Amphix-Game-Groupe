@@ -14,12 +14,25 @@ export default function LiveRankingScreen() {
   useEffect(() => {
     const fetchBoard = async () => {
       try {
-        const { data: sessionData } = await supabase.from('sessions').select('*').eq('status', 'active').maybeSingle();
+        const { data: sessionDataList, error: sessionError } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('status', 'active')
+          .order('start_time', { ascending: false })
+          .limit(1);
+          
+        if (sessionError) {
+          console.error("Session lookup error:", sessionError);
+        }
+        
+        const sessionData = sessionDataList?.[0];
+        
         if (!sessionData) {
           setLeaderboard([]);
           setSession(null);
           return;
         }
+        
         setSession(sessionData);
 
         const { data: players } = await supabase.from('players').select('*').eq('session_id', sessionData.id);
