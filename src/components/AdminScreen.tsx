@@ -5,6 +5,9 @@ import { Trophy, Users, Clock, Play, Square, Trash2, LogOut, Key, X, Plus } from
 
 import { parseSafeDate } from '../App';
 import SQLInstruction from './SQLInstruction';
+import { ALL_QUESTIONS } from '../data/questions';
+
+const AVAILABLE_CATEGORIES = Array.from(new Set(ALL_QUESTIONS.map((q: any) => q.category)));
 
 export default function AdminScreen({ getActiveSession, showToast }: any) {
   const [session, setSession] = useState<any>(null);
@@ -12,7 +15,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   
   // Validation Codes State
   const [validationCode, setValidationCode] = useState(() => 
-    Array.from({ length: 5 }, () => Math.floor(1000 + Math.random() * 9000).toString()).join(', ')
+    Array.from({ length: 20 }, () => Math.floor(1000 + Math.random() * 9000).toString()).join(', ')
   );
   const [allGeneratedCodes, setAllGeneratedCodes] = useState<string[]>(() => {
     try { 
@@ -25,8 +28,8 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
 
   const [showCodesModal, setShowCodesModal] = useState(false);
 
-  const generateNewCodes = async () => {
-    const codes = Array.from({ length: 5 }, () => Math.floor(1000 + Math.random() * 9000).toString());
+  const generateNewCodes = async (count: number = 20) => {
+    const codes = Array.from({ length: count }, () => Math.floor(1000 + Math.random() * 9000).toString());
     const newCodesStr = codes.join(', ');
     setValidationCode(newCodesStr);
     setAllGeneratedCodes(codes);
@@ -41,7 +44,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
       }
     }
     
-    showToast('5 nouveaux codes générés');
+    showToast(`${count} nouveaux codes générés`);
   };
 
   const addSingleCode = async () => {
@@ -89,8 +92,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [eliminatedPlayers, setEliminatedPlayers] = useState<{id: string, name: string}[]>([]);
   const [previousPlayers, setPreviousPlayers] = useState<any[]>([]);
-  const [useSuites, setUseSuites] = useState(true);
-  const [useSeries, setUseSeries] = useState(true);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(AVAILABLE_CATEGORIES);
   const [showSqlInstruction, setShowSqlInstruction] = useState(false);
 
   const updateSessionGroups = async (newGroups: string[]) => {
@@ -180,14 +182,10 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   };
 
   const startSession = async () => {
-    if (!useSuites && !useSeries) return showToast('Sélectionnez au moins une catégorie', true);
+    if (selectedCategories.length === 0) return showToast('Sélectionnez au moins une catégorie', true);
     if (!validationCode || groups.length === 0) return showToast('Veuillez générer des codes et des groupes', true);
 
-    let cats = [];
-    if (useSuites) cats.push('suites');
-    if (useSeries) cats.push('series');
-    
-    const categoryStr = cats.join(',');
+    const categoryStr = selectedCategories.join(',');
     
     try {
       const { error } = await supabase.from('sessions').insert({
@@ -289,16 +287,22 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
             </h3>
             
             <div className="mb-4 bg-gray-50/80 p-4 rounded-[1.5rem] border border-gray-100 relative z-10">
-               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Catégories</p>
-               <div className="flex gap-3">
-                 <label className="flex flex-1 items-center justify-center gap-2 cursor-pointer bg-white px-3 py-3 rounded-2xl border-2 hover:border-game-blue transition-colors shadow-sm select-none">
-                   <input type="checkbox" checked={useSuites} onChange={e => setUseSuites(e.target.checked)} className="w-4 h-4 accent-game-blue cursor-pointer" />
-                   <span className="font-bold text-gray-800 text-sm">Suites</span>
-                 </label>
-                 <label className="flex flex-1 items-center justify-center gap-2 cursor-pointer bg-white px-3 py-3 rounded-2xl border-2 hover:border-game-orange transition-colors shadow-sm select-none">
-                   <input type="checkbox" checked={useSeries} onChange={e => setUseSeries(e.target.checked)} className="w-4 h-4 accent-game-orange cursor-pointer" />
-                   <span className="font-bold text-gray-800 text-sm">Séries</span>
-                 </label>
+               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Catégories ({AVAILABLE_CATEGORIES.length} disponibles)</p>
+               <div className="flex flex-wrap gap-3">
+                 {AVAILABLE_CATEGORIES.map(cat => (
+                   <label key={cat} className="flex flex-1 items-center justify-center gap-2 cursor-pointer bg-white px-3 py-3 rounded-2xl border-2 hover:border-game-blue transition-colors shadow-sm select-none min-w-[120px]">
+                     <input 
+                       type="checkbox" 
+                       checked={selectedCategories.includes(cat)} 
+                       onChange={e => {
+                         if (e.target.checked) setSelectedCategories(prev => [...prev, cat]);
+                         else setSelectedCategories(prev => prev.filter(c => c !== cat));
+                       }} 
+                       className="w-4 h-4 accent-game-blue cursor-pointer" 
+                     />
+                     <span className="font-bold text-gray-800 text-sm uppercase">{cat}</span>
+                   </label>
+                 ))}
                </div>
             </div>
 
@@ -564,10 +568,10 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
 
               <div className="flex gap-3 mb-6 bg-game-indigo/5 p-4 rounded-[1.5rem] border border-game-indigo/10 flex-col sm:flex-row shadow-inner">
                 <button 
-                  onClick={generateNewCodes}
+                  onClick={() => generateNewCodes(20)}
                   className="flex-1 bg-game-indigo hover:bg-[#4a4adb] text-white font-black py-4 px-4 rounded-xl transition-all shadow-[0_8px_16px_rgba(88,86,214,0.3)] flex flex-col items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  <span className="flex items-center gap-2 mb-1"><Key className="w-5 h-5" /> RE-GÉNÉRER 5 CODES</span>
+                  <span className="flex items-center gap-2 mb-1"><Key className="w-5 h-5" /> RE-GÉNÉRER 20 CODES</span>
                   <span className="text-xs text-indigo-200 font-bold uppercase tracking-wider">Remplace les anciens non utilisés</span>
                 </button>
                 <button 
