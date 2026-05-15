@@ -46,7 +46,7 @@ export default function LiveRankingScreen() {
 
             setTimeout(() => {
               setEliminatedPlayer(null);
-            }, 3000); // kept 3s instead of 1s so it's readable, user may not see a 1s popup if looking away
+            }, 3000); 
           }
         }
         previousPlayersRef.current = players;
@@ -100,10 +100,10 @@ export default function LiveRankingScreen() {
   }, [session]);
 
   return (
-    <div className="min-h-screen bg-[#f4f7fa] w-full p-8 font-sans overflow-hidden flex flex-col">
-      <div className="max-w-[1600px] w-full mx-auto flex flex-col items-center flex-1 min-h-0">
+    <div className="min-h-screen bg-[#f4f7fa] w-full p-8 font-sans">
+      <div className="max-w-7xl mx-auto flex flex-col items-center">
         
-        <div className="w-full flex justify-between items-center mb-8">
+        <div className="w-full flex justify-between items-center mb-12">
           <h1 className="text-4xl lg:text-5xl font-black bg-clip-text text-transparent bg-gradient-to-r from-game-indigo to-game-blue flex items-center gap-4">
             <Trophy className="w-10 h-10 lg:w-12 lg:h-12 text-game-indigo" />
             CLASSEMENT EN DIRECT
@@ -119,14 +119,14 @@ export default function LiveRankingScreen() {
           )}
         </div>
 
-        <div className="w-full flex-1 overflow-y-auto custom-scrollbar pb-12 relative">
+        <div className="w-full flex-1 min-h-[400px]">
           {!leaderboard.length ? (
-             <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 font-bold gap-4 text-2xl">
+             <div className="h-64 flex flex-col items-center justify-center text-center text-gray-400 font-bold gap-4 text-2xl">
                <div className="w-16 h-16 rounded-full border-8 border-gray-100 border-t-game-blue animate-spin" />
                En attente des scores...
              </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 auto-rows-max">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
               <AnimatePresence>
                 {leaderboard.map((g, i) => (
                   <motion.div 
@@ -135,51 +135,49 @@ export default function LiveRankingScreen() {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
                     key={g.group_name} 
-                    className="flex flex-col bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden relative max-h-[70vh] flex-shrink-0"
+                    className="flex flex-col gap-4 bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden relative"
                   >
                     <div className="absolute top-[-50px] right-[-50px] w-32 h-32 bg-game-teal rounded-full opacity-5 pointer-events-none" />
                     
-                    <div className="flex justify-between items-center p-6 border-b border-gray-100 relative z-10 bg-white/90 backdrop-blur-md sticky top-0">
-                      <div className="flex items-center gap-4">
-                         <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-2xl shadow-md border-4 border-white ${
-                           i === 0 ? 'bg-yellow-100 text-yellow-600' : 
-                           i === 1 ? 'bg-gray-200 text-gray-600' : 
-                           i === 2 ? 'bg-orange-100 text-orange-600' : 
-                           'bg-gray-100 text-gray-400'
-                         }`}>
-                           {i === 0 ? '🏆' : i + 1}
-                         </div>
-                         <div className="font-black text-gray-800 text-2xl truncate max-w-[200px]">{g.group_name}</div>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <div className="font-black text-game-teal text-5xl tabular-nums leading-none">{g.score}</div>
-                        <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Points</div>
-                      </div>
+                    <div className="flex items-center gap-4 border-b border-gray-100 pb-4 relative z-10">
+                       <div className={`w-16 h-16 rounded-full flex items-center justify-center font-black text-3xl shadow-md border-4 border-white ${
+                         i === 0 ? 'bg-yellow-100 text-yellow-600' : 
+                         i === 1 ? 'bg-gray-200 text-gray-600' : 
+                         i === 2 ? 'bg-orange-100 text-orange-600' : 
+                         'bg-gray-100 text-gray-400'
+                       }`}>
+                         {i === 0 ? '🏆' : i + 1}
+                       </div>
+                       <div className="flex-1 font-black text-gray-800 text-2xl truncate">{g.group_name}</div>
+                       <div className="flex flex-col items-end">
+                         <div className="font-black text-game-teal text-5xl tabular-nums leading-none">{g.score}</div>
+                         <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Points</div>
+                       </div>
                     </div>
                     
-                    <div className="flex flex-col relative z-10 p-2 overflow-y-auto custom-scrollbar overflow-x-hidden">
+                    <div className="flex flex-col relative z-10 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
                       <AnimatePresence>
-                        {g.players.sort((a: any, b: any) => (b.group_score || 0) - (a.group_score || 0)).map((p: any, idx: number) => (
+                        {[...g.players].sort((a: any, b: any) => (b.group_score || 0) - (a.group_score || 0)).map((p: any, idx: number) => (
                           <motion.div 
                             layout
                             key={p.id}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className={`flex justify-between items-center p-3 sm:px-4 rounded-xl ${idx % 2 === 0 ? 'bg-gray-50/50' : 'bg-transparent'} ${p.individual_points === 0 ? 'opacity-50 grayscale' : ''}`}
+                            className={`flex justify-between items-center p-3 ${idx > 0 && 'border-t border-gray-50'} ${p.individual_points === 0 ? 'opacity-50 grayscale' : ''}`}
                           >
                              <div className="flex items-center gap-3 flex-1 truncate">
-                               <div className="w-8 h-8 rounded-full bg-white border border-gray-100 text-gray-500 font-black flex items-center justify-center text-xs shadow-sm">{idx + 1}</div>
-                               <div className={`truncate font-bold text-lg ${p.individual_points === 0 ? 'text-gray-500 line-through decoration-game-red decoration-2' : 'text-gray-700'}`}>
+                               <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 font-black flex items-center justify-center text-sm">{idx + 1}</div>
+                               <div className={`truncate font-bold text-lg ${p.individual_points === 0 ? 'text-gray-400 line-through decoration-game-red decoration-2' : 'text-gray-700'}`}>
                                  {p.name}
                                </div>
                              </div>
-                             <div className="flex items-center gap-3">
-                               <div className="font-bold text-game-blue bg-blue-50 px-3 py-1 rounded-full text-sm uppercase tracking-wider tabular-nums shadow-sm">
+                             <div className="flex items-center gap-2">
+                               <div className="font-bold text-game-blue bg-blue-50 px-3 py-1 rounded-full text-sm uppercase tracking-wider">
                                  +{p.group_score || 0}
                                </div>
-                               <div className={`font-bold px-3 py-1 rounded-full text-sm flex items-center gap-1.5 uppercase tracking-wider shadow-sm tabular-nums ${p.individual_points === 0 ? 'bg-red-100 text-red-600' : 'bg-orange-50 text-game-orange'}`}>
-                                 {p.individual_points === 0 ? <Skull className="w-4 h-4" /> : <div className="w-2 h-2 rounded-full bg-game-orange shrink-0 animate-pulse"></div>}
-                                 {p.individual_points} <span className="hidden sm:inline">vies</span>
+                               <div className={`font-bold px-3 py-1 rounded-full text-sm flex items-center gap-1 uppercase tracking-wider tabular-nums ${p.individual_points === 0 ? 'bg-red-50 text-game-red' : 'bg-orange-50 text-game-orange'}`}>
+                                 {p.individual_points === 0 ? <Skull className="w-3 h-3" /> : null}
+                                 {p.individual_points} vies
                                </div>
                              </div>
                           </motion.div>
