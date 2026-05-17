@@ -247,6 +247,7 @@ const Toast = ({ msg, isError, onClose }: { msg: string; isError: boolean; onClo
 export const parseSafeDate = (d: string) => {
   if (!d) return new Date();
   let s = d.replace(' ', 'T');
+  s = s.replace(/(\.\d{3})\d+/, '$1');
   if (!s.includes('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
     s += 'Z';
   }
@@ -292,8 +293,16 @@ export default function App() {
   }, []);
 
   const getActiveSession = async () => {
-    const { data, error } = await supabase.from('sessions').select('*').order('start_time', { ascending: false }).limit(1).maybeSingle();
-    if (error) throw error;
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('status', 'active')
+      .neq('groups', 'Libre')
+      .order('start_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+      
+    if (error && error.code !== 'PGRST116') throw error;
     return data;
   };
 
@@ -376,10 +385,11 @@ export default function App() {
                 getActiveSession={getActiveSession}
                 nameInput={nameInput}
                 setNameInput={setNameInput}
-                onStart={(pId: string, pName: string, s: any) => {
+                onStart={(pId: string, pName: string, s: any, pScore: number, pPoints: number) => {
                   setPlayerId(pId);
                   setPlayerName(pName);
                   setSession(s);
+                  // We could store pScore/pPoints in a state or ref if needed
                   sounds.click();
                   setCurrentScreen('quiz');
                 }}
@@ -462,6 +472,13 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
   const [shake, setShake] = useState(false);
 
   useEffect(() => {
+    if (session?.groups) {
+      const g = session.groups.split(',').map((g: string) => g.trim()).filter(Boolean);
+      if (g.length === 1 && selectedGroup !== g[0]) setSelectedGroup(g[0]);
+    }
+  }, [session, selectedGroup]);
+
+  useEffect(() => {
     loadSession();
 
     const channel = supabase.channel('public:entry')
@@ -476,7 +493,16 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
     };
   }, []);
 
+  // In order to avoid the stale closure issue, you can make loadSession ignore if `isValidated` is true
+  // BUT we don't have access to the latest state of isValidated. 
+  // Let's use a ref.
+  const isValidatedRef = useRef(false);
+  useEffect(() => {
+    isValidatedRef.current = isValidated;
+  }, [isValidated]);
+
   const loadSession = async () => {
+    if (isValidatedRef.current) return;
     try {
       const s = await getActiveSession();
       setSession(s);
@@ -499,28 +525,54 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
   };
 
   const handleValidateCode = async () => {
-    if (!session || !session.validation_code) {
-      setIsValidated(true);
-      return;
-    }
-
+    const inputCode = validationInput.trim().toUpperCase();
+    if (!inputCode) return;
+    
     setLoading(true);
+    let matchedSession = null;
+
     try {
-      const { data: currentSession } = await supabase
-        .from('sessions')
-        .select('validation_code')
-        .eq('id', session.id)
-        .single();
-      if (currentSession) {
-        const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim()).filter(Boolean) || [];
-        if (validCodes.includes(validationInput.trim())) {
-          setIsValidated(true);
-          showToast('✅ Code valide !');
-        } else {
-          setShake(true);
-          setTimeout(() => setShake(false), 500);
-          showToast('❌ Code invalide', true);
+      if (session && session.status === 'active') {
+        const { data: currentSession } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('id', session.id)
+          .single();
+        if (currentSession) {
+          const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          const unlimitedCodes = currentSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          
+          if (validCodes.includes(inputCode) || unlimitedCodes.includes(inputCode)) {
+            matchedSession = currentSession;
+          }
         }
+      }
+
+      if (!matchedSession) {
+        const { data: libreSession } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('status', 'active')
+          .eq('groups', 'Libre')
+          .maybeSingle();
+          
+        if (libreSession) {
+          const validCodes = libreSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          const unlimitedCodes = libreSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          if (validCodes.includes(inputCode) || unlimitedCodes.includes(inputCode)) {
+            matchedSession = libreSession;
+          }
+        }
+      }
+
+      if (matchedSession) {
+        setSession(matchedSession);
+        setIsValidated(true);
+        showToast('✅ Code valide !');
+      } else {
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+        showToast('❌ Code invalide', true);
       }
     } catch (e) {
       showToast('❌ Erreur de vérification', true);
@@ -534,39 +586,59 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 
     setLoading(true);
     try {
-      if (session.validation_code) {
+      let isUnlimitedUsed = false;
+      if (session.validation_code || session.unlimited_codes) {
         const { data: currentSession } = await supabase
           .from('sessions')
-          .select('validation_code')
+          .select('validation_code, unlimited_codes')
           .eq('id', session.id)
           .single();
         if (currentSession) {
-          const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim()).filter(Boolean) || [];
-          if (!validCodes.includes(validationInput.trim())) {
-            showToast('❌ Ce code a déjà été utilisé.', true);
+          const inputCode = validationInput.trim().toUpperCase();
+          const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          const unlimitedCodes = currentSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
+          
+          if (unlimitedCodes.includes(inputCode)) {
+            isUnlimitedUsed = true;
+          } else if (validCodes.includes(inputCode)) {
+            const remainingCodes = validCodes.filter((c: string) => c !== inputCode).join(', ');
+            await supabase.from('sessions').update({ validation_code: remainingCodes }).eq('id', session.id);
+          } else {
+            showToast('❌ Ce code a déjà été utilisé ou est invalide.', true);
             setLoading(false);
             setIsValidated(false);
             return;
           }
-          const remainingCodes = validCodes.filter((c: string) => c !== validationInput.trim()).join(', ');
-          await supabase.from('sessions').update({ validation_code: remainingCodes }).eq('id', session.id);
         }
       }
 
-      const { data, error } = await supabase
+      let playerData;
+      const { data: existing } = await supabase
         .from('players')
-        .insert({
-          session_id: session.id,
-          name: nameInput.trim(),
-          group_name: selectedGroup || null,
-          individual_points: session.initial_points || 3,
-          group_score: 0,
-          started_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      onStart(data.id, data.name, session);
+        .select('*')
+        .eq('session_id', session.id)
+        .eq('name', nameInput.trim())
+        .maybeSingle();
+
+      if (existing) {
+        playerData = existing;
+      } else {
+        const { data, error } = await supabase
+          .from('players')
+          .insert({
+            session_id: session.id,
+            name: nameInput.trim(),
+            group_name: selectedGroup || null,
+            individual_points: isUnlimitedUsed ? 1000 : (session.initial_points || 3),
+            group_score: 0,
+            started_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        playerData = data;
+      }
+      onStart(playerData.id, playerData.name, session, playerData.group_score, playerData.individual_points);
     } catch (e) {
       showToast('Erreur lors du lancement', true);
       setLoading(false);
@@ -648,13 +720,13 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
                   onChange={(e) => setValidationInput(e.target.value)}
                   className="w-full px-6 py-4 rounded-[2rem] bg-gray-50/80 border-2 border-transparent text-center text-lg font-bold text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 focus:bg-white focus:border-game-blue focus:ring-4 focus:ring-game-blue/20 shadow-inner"
                   placeholder="Code de validation"
-                  onKeyDown={(e) => e.key === 'Enter' && !loading && session && handleValidateCode()}
+                  onKeyDown={(e) => e.key === 'Enter' && !loading && handleValidateCode()}
                 />
               </motion.div>
               <motion.button
                 whileHover={{ scale: 1.03, boxShadow: '0 12px 30px rgba(88,86,214,0.5)' }}
                 whileTap={{ scale: 0.97 }}
-                disabled={loading || !session || !validationInput.trim()}
+                disabled={loading || !validationInput.trim()}
                 onClick={handleValidateCode}
                 className="w-full bg-game-indigo hover:bg-[#4a4adb] disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-lg py-4 px-6 rounded-[2rem] shadow-[0_8px_24px_rgba(88,86,214,0.4)] transition-all flex items-center justify-center gap-2"
               >
@@ -754,6 +826,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 
 // --- ENHANCED QUIZ SCREEN ---
 function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
+  const [localSession, setLocalSession] = useState(session);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
 
@@ -772,14 +845,45 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
   }, [individualPoints]);
 
   useEffect(() => {
-    const activeCats = session?.categories ? session.categories.split(',') : [];
+    const fetchPlayerData = async () => {
+      const { data } = await supabase.from('players').select('group_score, individual_points').eq('id', playerId).single();
+      if (data) {
+        setScore(data.group_score || 0);
+        setIndividualPoints(data.individual_points || 0);
+      }
+    };
+    fetchPlayerData();
+    
+    // Subscribe to player updates (in case they play on multiple devices)
+    const playerChannel = supabase.channel(`public:players:${playerId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `id=eq.${playerId}` }, (payload) => {
+        const p = payload.new;
+        if (p) {
+          setScore(p.group_score || 0);
+          setIndividualPoints(p.individual_points || 0);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(playerChannel);
+    };
+  }, [playerId]);
+
+  useEffect(() => {
+    const activeCats = localSession?.categories ? localSession.categories.split(',').map((c: string) => c.trim()) : [];
     let filtered = ALL_QUESTIONS;
     if (activeCats.length > 0) {
       filtered = ALL_QUESTIONS.filter((q) => activeCats.includes(q.category));
     }
+    
+    if (filtered.length === 0) {
+      filtered = ALL_QUESTIONS;
+    }
+
     const shuf = [...filtered].sort(() => Math.random() - 0.5);
     setQuestions(shuf);
-  }, [session]);
+  }, [localSession]);
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
@@ -807,13 +911,19 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
   );
 
   useEffect(() => {
-    if (!session || questions.length === 0) return;
+    if (!localSession || questions.length === 0) return;
 
-    const startObj = parseSafeDate(session.start_time);
-    const end = new Date(startObj.getTime() + session.duration_seconds * 1000);
+    const startObj = parseSafeDate(localSession.start_time);
+    const end = new Date(startObj.getTime() + localSession.duration_seconds * 1000);
     let intervalId: any;
 
     const tick = () => {
+      if (localSession.groups === 'Libre') {
+        const diff = Math.floor((Date.now() - startObj.getTime()) / 1000);
+        setTimeLeft(diff); // Acts as a stopwatch
+        return;
+      }
+      
       const diff = Math.max(0, Math.floor((end.getTime() - Date.now()) / 1000));
       setTimeLeft(diff);
       if (diff <= 0) {
@@ -827,10 +937,13 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
 
     const checkStatus = async () => {
       try {
-        const { data } = await supabase.from('sessions').select('status').eq('id', session.id).maybeSingle();
-        if (data && data.status !== 'active') {
-          finishGame(false);
-          showToast("L'administrateur a arrêté la partie.", true);
+        const { data } = await supabase.from('sessions').select('*').eq('id', session.id).maybeSingle();
+        if (data) {
+          setLocalSession(data);
+          if (data.status !== 'active') {
+            finishGame(false);
+            showToast("L'administrateur a arrêté la partie.", true);
+          }
         }
       } catch (e) {}
     };
@@ -846,7 +959,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
       clearInterval(dbId);
       supabase.removeChannel(channel);
     };
-  }, [session, questions, finishGame, showToast]);
+  }, [localSession, questions, finishGame, showToast, session.id]);
 
   const handleOptionClick = (optIdx: number) => {
     if (answered) return;
@@ -931,7 +1044,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
   const m = timeLeft ? Math.floor(timeLeft / 60) : 0;
   const s = timeLeft ? timeLeft % 60 : 0;
   const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  const isUrgent = timeLeft && timeLeft <= 60;
+  const isUrgent = localSession?.groups !== 'Libre' && timeLeft && timeLeft <= 60;
   const progressPercent = (currentIdx / questions.length) * 100;
   const isCorrectAnswer = answered && selectedOpt !== null && selectedOpt === currentQ.correctIndex;
 
@@ -1235,7 +1348,7 @@ function ArenaScreen({ scoreData, onRetry }: any) {
             <>
               GAME
               <br />
-              <span className="text-game-indigo">OVER</span>
+              <span className="text-game-indigo">TERMINÉ</span>
             </>
           )}
         </motion.h1>
@@ -1291,7 +1404,7 @@ function ArenaScreen({ scoreData, onRetry }: any) {
             <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <Share2 className="w-5 h-5 text-gray-600" />
             </div>
-            <span className="text-xs uppercase tracking-wider">Share</span>
+            <span className="text-xs uppercase tracking-wider">Partager</span>
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.1, y: -2 }}
@@ -1301,7 +1414,7 @@ function ArenaScreen({ scoreData, onRetry }: any) {
             <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <Trophy className="w-5 h-5 text-gray-600" />
             </div>
-            <span className="text-xs uppercase tracking-wider">High Score</span>
+            <span className="text-xs uppercase tracking-wider">Meilleur Score</span>
           </motion.button>
         </div>
       </motion.div>
@@ -1372,7 +1485,7 @@ function ArenaScreen({ scoreData, onRetry }: any) {
                   whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(52,199,89,0.3)' }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
-                    window.open('https://wa.me/22946244549?text=je%20veux%20rejoindre%20amphix', '_blank');
+                    window.open('https://amphixhome.netlify.app/', '_blank');
                     setShowPanda(false);
                   }}
                   className="flex-[2] bg-game-teal hover:bg-green-500 text-white font-black py-3 rounded-2xl shadow-lg transition-all"

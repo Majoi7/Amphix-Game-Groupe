@@ -14,20 +14,22 @@ export default function LiveRankingScreen() {
   useEffect(() => {
     const fetchBoard = async () => {
       try {
-        const { data: sessionDataList, error: sessionError } = await supabase
+        const { data: sessionData, error: sessionError } = await supabase
           .from('sessions')
           .select('*')
           .eq('status', 'active')
           .order('start_time', { ascending: false })
-          .limit(1);
+          .limit(1)
+          .maybeSingle();
+          
+        console.log("sessionData from DB:", sessionData, sessionError);
           
         if (sessionError) {
           console.error("Session lookup error:", sessionError);
         }
         
-        const sessionData = sessionDataList?.[0];
-        
         if (!sessionData) {
+          console.log("No active session found, clearing leaderboard.");
           setLeaderboard([]);
           setSession(null);
           return;
@@ -35,8 +37,13 @@ export default function LiveRankingScreen() {
         
         setSession(sessionData);
 
-        const { data: players } = await supabase.from('players').select('*').eq('session_id', sessionData.id);
-        if (!players?.length) return setLeaderboard([]);
+        const { data: players, error: playersError } = await supabase.from('players').select('*').eq('session_id', sessionData.id);
+        console.log("players from DB:", players?.length, playersError);
+        
+        if (!players?.length) {
+          console.log("No players found for session id:", sessionData.id);
+          return setLeaderboard([]);
+        }
 
         // Detect eliminated players
         const previousPlayers = previousPlayersRef.current;
@@ -75,19 +82,30 @@ export default function LiveRankingScreen() {
 
         const lb = Object.values(groupMap).sort((a: any, b: any) => b.score - a.score);
         setLeaderboard(lb);
-      } catch(e) {}
+      } catch(e) {
+        console.error("fetchBoard crashed:", e);
+      }
+    };
+
+    let debounceTimer: any;
+    const fetchBoardDebounced = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchBoard();
+      }, 500);
     };
 
     fetchBoard();
     
     const channel = supabase.channel('public:liveranking')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => fetchBoard())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => fetchBoard())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => fetchBoardDebounced())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => fetchBoardDebounced())
       .subscribe();
 
-    const id = setInterval(fetchBoard, 30000); 
+    const id = setInterval(fetchBoard, 15000); 
 
     return () => {
+      clearTimeout(debounceTimer);
       clearInterval(id);
       supabase.removeChannel(channel);
     };
@@ -190,7 +208,7 @@ export default function LiveRankingScreen() {
                                </div>
                                <div className={`font-bold px-3 py-1 rounded-full text-sm flex items-center gap-1 uppercase tracking-wider tabular-nums ${p.individual_points === 0 ? 'bg-red-50 text-game-red' : 'bg-orange-50 text-game-orange'}`}>
                                  {p.individual_points === 0 ? <Skull className="w-3 h-3" /> : null}
-                                 {p.individual_points} vies
+                                 {p.individual_points === -1 ? '∞' : p.individual_points} vies
                                </div>
                              </div>
                           </motion.div>

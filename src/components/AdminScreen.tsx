@@ -17,6 +17,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   const [validationCode, setValidationCode] = useState(() => 
     Array.from({ length: 20 }, () => Math.floor(1000 + Math.random() * 9000).toString()).join(', ')
   );
+  const [unlimitedCode, setUnlimitedCode] = useState('');
   const [allGeneratedCodes, setAllGeneratedCodes] = useState<string[]>(() => {
     try { 
       const stored = localStorage.getItem('adminAllCodes');
@@ -74,6 +75,47 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
     showToast('Nouveau code ajouté');
   };
 
+  const addUnlimitedCode = async () => {
+    const code = 'AMPHIX-' + Math.floor(1000 + Math.random() * 9000).toString();
+    try {
+      const { data: libreSession } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      const currentCodesStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
+      const newStr = currentCodesStr ? `${currentCodesStr}, ${code}` : code;
+      
+      setUnlimitedCode(newStr);
+      
+      if (libreSession) {
+        await supabase.from('sessions').update({ unlimited_codes: newStr }).eq('id', libreSession.id);
+      } else {
+        const { error } = await supabase.from('sessions').insert({
+          start_time: new Date().toISOString(),
+          status: 'active',
+          duration_seconds: 0,
+          validation_code: '',
+          unlimited_codes: newStr,
+          categories: AVAILABLE_CATEGORIES.join(','),
+          groups: 'Libre',
+          initial_points: 3
+        });
+        if (error) {
+          console.error("Insert error for libre session details: ", error);
+          if (error.code === '23514') {
+             setShowSqlInstruction(true);
+             showToast('Mise à jour de la base de données requise !', true);
+             return;
+          }
+          showToast('Erreur SQL, vérifier console', true);
+          return;
+        }
+      }
+      refresh();
+      showToast('Nouveau code illimité ajouté');
+    } catch (e) {
+      console.error("Failed to update unlimited codes", e);
+    }
+  };
+
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     showToast('Code copié !');
@@ -84,6 +126,25 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
     ? (session.validation_code?.split(',').map((c: string) => c.trim()).filter(Boolean) || []) 
     : validationCode.split(',').map((c: string) => c.trim()).filter(Boolean);
   const usedCodes = allGeneratedCodes.filter(c => !unusedCodes.includes(c));
+
+  const deleteUnlimitedCode = async (codeToRemove: string) => {
+    try {
+      const { data: libreSession } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      const currentStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
+      const newArray = currentStr.split(',').map(c => c.trim()).filter(Boolean).filter(c => c !== codeToRemove);
+      const newStr = newArray.join(', ');
+      
+      setUnlimitedCode(newStr);
+      
+      if (libreSession) {
+        await supabase.from('sessions').update({ unlimited_codes: newStr }).eq('id', libreSession.id);
+      }
+      refresh();
+      showToast('Code supprimé');
+    } catch(e) {}
+  };
+
+  const currentUnlimitedCodes = unlimitedCode.split(',').map((c: string) => c.trim()).filter(Boolean);
 
   const [groups, setGroups] = useState<string[]>(['Groupe A', 'Groupe B']);
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -110,6 +171,11 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
     try {
       const s = await getActiveSession();
       setSession(s);
+      
+      const { data: libreSession } = await supabase.from('sessions').select('unlimited_codes').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      if (libreSession) {
+        setUnlimitedCode(libreSession.unlimited_codes || '');
+      }
       
       if (s && s.status === 'active') {
         if (s.validation_code !== undefined) {
@@ -194,6 +260,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
         status: 'active',
         categories: categoryStr,
         validation_code: validationCode,
+        unlimited_codes: unlimitedCode,
         groups: groups.join(', '),
         initial_points: initialPoints
       });
@@ -435,7 +502,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
             <div className="absolute bottom-[-100px] left-[-50px] w-80 h-80 bg-game-blue rounded-full opacity-5 pointer-events-none" />
             <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4 relative z-10 pb-4 border-b border-gray-100">
               <h3 className="font-black text-2xl text-gray-800 flex items-center gap-3">
-                <Trophy className="w-7 h-7 text-game-orange" /> RANKING LIVE
+                <Trophy className="w-7 h-7 text-game-orange" /> CLASSEMENT EN DIRECT
               </h3>
               <div className="flex gap-2">
                 {session && (
@@ -518,7 +585,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
                                      <div className="font-bold text-game-blue bg-blue-50 px-3 py-1 rounded-full text-xs uppercase tracking-wider">+{p.group_score || 0} pts</div>
                                      <div className="font-bold text-game-orange bg-orange-50 px-3 py-1 rounded-full text-xs flex items-center gap-1 uppercase tracking-wider">
                                        <span className="w-1.5 h-1.5 rounded-full bg-game-orange mr-1"></span>
-                                       {p.individual_points} vies
+                                       {p.individual_points === -1 ? '∞' : p.individual_points} vies
                                      </div>
                                      <button onClick={(e) => { e.stopPropagation(); deletePlayer(p.id, p.name); }} className="w-8 h-8 flex items-center justify-center text-gray-300 hover:bg-game-red hover:text-white rounded-full transition-colors ml-1">
                                        <Trash2 className="w-4 h-4" />
@@ -566,24 +633,59 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
                 </button>
               </div>
 
-              <div className="flex gap-3 mb-6 bg-game-indigo/5 p-4 rounded-[1.5rem] border border-game-indigo/10 flex-col sm:flex-row shadow-inner">
+              <div className="flex gap-2 mb-6 bg-game-indigo/5 p-4 rounded-[1.5rem] border border-game-indigo/10 flex-col sm:flex-row shadow-inner">
                 <button 
                   onClick={() => generateNewCodes(20)}
-                  className="flex-1 bg-game-indigo hover:bg-[#4a4adb] text-white font-black py-4 px-4 rounded-xl transition-all shadow-[0_8px_16px_rgba(88,86,214,0.3)] flex flex-col items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex-1 bg-game-indigo hover:bg-[#4a4adb] text-white font-black py-3 px-3 rounded-xl transition-all shadow-[0_8px_16px_rgba(88,86,214,0.3)] flex flex-col items-center justify-center hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  <span className="flex items-center gap-2 mb-1"><Key className="w-5 h-5" /> RE-GÉNÉRER 20 CODES</span>
-                  <span className="text-xs text-indigo-200 font-bold uppercase tracking-wider">Remplace les anciens non utilisés</span>
+                  <span className="flex items-center gap-2 mb-1 text-sm"><Key className="w-4 h-4" /> RE-GÉNÉRER 20 CODES</span>
+                  <span className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider text-center">Remplace les non utilisés</span>
                 </button>
                 <button 
                   onClick={addSingleCode}
-                  className="flex-1 bg-white hover:bg-gray-50 text-game-indigo border-2 border-game-indigo/20 font-black py-4 px-4 rounded-xl transition-all flex flex-col items-center justify-center shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex-1 bg-white hover:bg-gray-50 text-game-indigo border-2 border-game-indigo/20 font-black py-3 px-3 rounded-xl transition-all flex flex-col items-center justify-center shadow-sm hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  <span className="flex items-center gap-2 mb-1"><Plus className="w-5 h-5" /> AJOUTER 1 CODE</span>
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Ajoute à la liste dispo</span>
+                  <span className="flex items-center gap-2 mb-1 text-sm"><Plus className="w-4 h-4" /> 1 CODE</span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">Usage unique</span>
+                </button>
+                <button 
+                  onClick={addUnlimitedCode}
+                  className="flex-1 bg-gradient-to-br from-game-orange to-red-500 hover:from-orange-500 hover:to-red-600 text-white border-2 border-transparent font-black py-3 px-3 rounded-xl transition-all flex flex-col items-center justify-center shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <span className="flex items-center gap-2 mb-1 text-sm"><Plus className="w-4 h-4" /> 1 ILLIMITÉ</span>
+                  <span className="text-[10px] text-white/80 font-bold uppercase tracking-wider text-center">Point/Temps Inifini</span>
                 </button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-8 pb-4">
+              <div className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-6 pb-4">
+                {currentUnlimitedCodes.length > 0 && (
+                  <div>
+                    <h4 className="font-black text-gray-800 flex items-center gap-2 mb-4 sticky top-0 bg-white py-2 z-10 text-lg border-b border-dashed border-gray-200 pb-2">
+                      <div className="w-3 h-3 rounded-full bg-game-orange"></div>
+                      Codes Illimités (Vies ∞) <span className="bg-orange-100 text-game-orange px-2.5 py-0.5 rounded-full text-sm">{currentUnlimitedCodes.length}</span>
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {currentUnlimitedCodes.map((code) => (
+                        <div key={code} className="bg-orange-50 border border-orange-200 rounded-2xl shadow-sm flex overflow-hidden">
+                          <button 
+                            onClick={() => copyToClipboard(code)}
+                            className="flex-1 text-game-orange hover:bg-orange-100 font-black py-4 px-2 tracking-[0.05em] sm:tracking-[0.1em] text-sm sm:text-base transition-colors"
+                            title="Copier le code illimité"
+                          >
+                            {code}
+                          </button>
+                          <button 
+                            onClick={() => deleteUnlimitedCode(code)}
+                            className="bg-red-100 hover:bg-red-200 text-red-600 px-4 flex items-center justify-center transition-colors border-l border-orange-200"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <h4 className="font-black text-gray-800 flex items-center gap-2 mb-4 sticky top-0 bg-white py-2 z-10 text-lg border-b border-dashed border-gray-200 pb-2">
                     <div className="w-3 h-3 rounded-full bg-game-teal"></div>
