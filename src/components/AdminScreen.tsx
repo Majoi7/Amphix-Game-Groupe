@@ -9,7 +9,7 @@ import { ALL_QUESTIONS } from '../data/questions';
 
 const AVAILABLE_CATEGORIES = Array.from(new Set(ALL_QUESTIONS.map((q: any) => q.category)));
 
-export default function AdminScreen({ getActiveSession, showToast }: any) {
+export default function AdminScreen({ getActiveSession, showToast, sounds }: any) {
   const [session, setSession] = useState<any>(null);
   const [duration, setDuration] = useState(10);
   
@@ -155,6 +155,8 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   const [previousPlayers, setPreviousPlayers] = useState<any[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(AVAILABLE_CATEGORIES);
   const [showSqlInstruction, setShowSqlInstruction] = useState(false);
+  const [libreSession, setLibreSession] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'active' | 'libre'>('active');
 
   const updateSessionGroups = async (newGroups: string[]) => {
     if (session && session.status === 'active') {
@@ -172,9 +174,10 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
       const s = await getActiveSession();
       setSession(s);
       
-      const { data: libreSession } = await supabase.from('sessions').select('unlimited_codes').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
-      if (libreSession) {
-        setUnlimitedCode(libreSession.unlimited_codes || '');
+      const { data: ls } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      setLibreSession(ls);
+      if (ls) {
+        setUnlimitedCode(ls.unlimited_codes || '');
       }
       
       if (s && s.status === 'active') {
@@ -186,10 +189,25 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
         }
       }
 
-      if (s) fetchLeaderboard(s.id);
-      else setLeaderboard([]);
+      if (viewMode === 'active') {
+        if (s) fetchLeaderboard(s.id);
+        else setLeaderboard([]);
+      } else {
+        if (ls) fetchLeaderboard(ls.id);
+        else setLeaderboard([]);
+      }
     } catch(e) {}
   };
+
+  useEffect(() => {
+    if (viewMode === 'active') {
+      if (session) fetchLeaderboard(session.id);
+      else setLeaderboard([]);
+    } else {
+      if (libreSession) fetchLeaderboard(libreSession.id);
+      else setLeaderboard([]);
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     refresh();
@@ -248,6 +266,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   };
 
   const startSession = async () => {
+    sounds?.click?.();
     if (selectedCategories.length === 0) return showToast('Sélectionnez au moins une catégorie', true);
     if (!validationCode || groups.length === 0) return showToast('Veuillez générer des codes et des groupes', true);
 
@@ -297,9 +316,10 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   };
 
   const deleteAll = async () => {
-    if (!session || !confirm('Supprimer TOUS les joueurs de cette session ?')) return;
+    const targetSession = viewMode === 'active' ? session : libreSession;
+    if (!targetSession || !confirm(`Supprimer TOUS les joueurs de la session ${viewMode === 'active' ? 'normale' : 'libre'} ?`)) return;
     try {
-      const { data: playersInfo } = await supabase.from('players').select('id').eq('session_id', session.id);
+      const { data: playersInfo } = await supabase.from('players').select('id').eq('session_id', targetSession.id);
       if (playersInfo && playersInfo.length > 0) {
         const pIds = playersInfo.map((p: any) => p.id);
         // Supprimer par lots pour éviter les limites de taille de requête
@@ -307,7 +327,7 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
            await supabase.from('answers').delete().in('player_id', pIds.slice(i, i + 100));
         }
       }
-      await supabase.from('players').delete().eq('session_id', session.id);
+      await supabase.from('players').delete().eq('session_id', targetSession.id);
       
       showToast('Tous supprimés');
       refresh();
@@ -505,29 +525,43 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
 
           <div className="bg-white rounded-[2.5rem] shadow-xl p-6 lg:p-8 border border-white relative overflow-hidden flex-1 min-h-[400px]">
             <div className="absolute bottom-[-100px] left-[-50px] w-80 h-80 bg-game-blue rounded-full opacity-5 pointer-events-none" />
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4 relative z-10 pb-4 border-b border-gray-100">
-              <h3 className="font-black text-2xl text-gray-800 flex items-center gap-3">
-                <Trophy className="w-7 h-7 text-game-orange" /> CLASSEMENT EN DIRECT
-              </h3>
-              <div className="flex gap-2">
-                {session && (
-                  <motion.button 
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => window.open('#/live-ranking', '_blank')} 
-                    className="text-xs w-max bg-blue-50 text-game-blue px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-game-blue hover:text-white transition-colors flex items-center gap-1.5 shadow-sm"
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4 relative z-10 pb-4 border-b border-gray-100">
+              <div className="flex flex-col gap-2">
+                <h3 className="font-black text-2xl text-gray-800 flex items-center gap-3">
+                  <Trophy className="w-7 h-7 text-game-orange" /> CLASSEMENT
+                </h3>
+                <div className="flex gap-2 bg-gray-100 p-1 rounded-full w-max">
+                  <button 
+                    onClick={() => setViewMode('active')}
+                    className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${viewMode === 'active' ? 'bg-white shadow-sm text-game-indigo' : 'text-gray-500 hover:text-gray-700'}`}
                   >
-                    <Play className="w-4 h-4" /> Plein Écran
-                  </motion.button>
-                )}
-                {leaderboard.length > 0 && (
+                    Normale
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('libre')}
+                    className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${viewMode === 'libre' ? 'bg-white shadow-sm text-game-orange' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Libre (∞)
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2 items-center">
+                <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => window.open(`#/live-ranking?type=${viewMode}`, '_blank')} 
+                  className="text-xs w-max bg-blue-50 text-game-blue px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-game-blue hover:text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <Play className="w-4 h-4" /> Plein Écran
+                </motion.button>
+                {((viewMode === 'active' && session) || (viewMode === 'libre' && libreSession)) && (
                   <motion.button 
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={deleteAll} 
                     className="text-xs w-max bg-red-50 text-game-red px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-game-red hover:text-white transition-colors flex items-center gap-1.5 shadow-sm"
                   >
-                    <Trash2 className="w-4 h-4" /> Reset 
+                    <Trash2 className="w-4 h-4" /> Effacer Classement
                   </motion.button>
                 )}
               </div>

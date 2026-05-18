@@ -498,5 +498,384 @@ export const ALL_QUESTIONS = [
     text: "Pour une série satisfaisant le critère de d’Alembert avec uₙ₊₁/uₙ → 1 par valeurs supérieures, on conclut que la série :",
     options: ["Converge", "Diverge", "Converge absolument", "Le critère ne permet pas de conclure"],
     correctIndex: 1
+  },
+  {
+    id: 61,
+    category: "equa_diff",
+    text: "Selon la Définition 0.1, l'ordre d'une équation différentielle est défini par :",
+    options: [
+      "L'exposant de la fonction y",
+      "L'ordre le plus élevé de la fonction dérivée",
+      "Le degré du polynôme caractéristique",
+      "Le nombre de variables"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 62,
+    category: "equa_diff",
+    text: "Une équation différentielle de la forme P(x)dx = Q(y)dy est appelée :",
+    options: [
+      "Équation homogène",
+      "Équation de Bernoulli",
+      "Équation à variables séparables",
+      "Équation de Riccati"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 63,
+    category: "equa_diff",
+    text: "Pour résoudre une équation différentielle homogène du premier ordre y' = f(y/x), on utilise généralement le changement de variable :",
+    options: [
+      "z = x/y",
+      "z = y/x",
+      "z = xy",
+      "z = y - x"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 64,
+    category: "equa_diff",
+    text: "La solution générale d'une équation différentielle linéaire avec second membre y = y_H(x) + y_p(x) est la somme de :",
+    options: [
+      "La solution de l'équation homogène et d'une constante",
+      "La solution de l'équation homogène et d'une solution particulière",
+      "Deux solutions particulières linéairement indépendantes",
+      "La solution triviale et la solution de l'équation caractéristique"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 65,
+    category: "equa_diff",
+    text: "Une équation de Bernoulli est de la forme y' + p(x)y = q(x)y^α. Quel changement de variable permet de la ramener à une équation linéaire ?",
+    options: [
+      "z = y^α",
+      "z = y^{1-α}",
+      "z = ln(y)",
+      "z = 1/y"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 66,
+    category: "equa_diff",
+    text: "Pour l'équation de Bernoulli y' - 2xy = -2xy², la valeur de α est 2. Le changement de variable approprié est donc :",
+    options: [
+      "z = y²",
+      "z = 1/y",
+      "z = √y",
+      "z = ln(y)"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 67,
+    category: "equa_diff",
+    text: "Une équation différentielle de Riccati (forme y' + a(x)y = b(x)y² + c(x)) peut être ramenée à une équation de Bernoulli si l'on connaît :",
+    options: [
+      "Une solution de l'équation homogène",
+      "Les racines de l'équation caractéristique",
+      "Une solution particulière y₀",
+      "La primitive de c(x)"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 68,
+    category: "equa_diff",
+    text: "Pour une équation différentielle du second ordre ay'' + by' + cy = 0, l'équation caractéristique associée est :",
+    options: [
+      "ax² + bx + c = d(x)",
+      "ar² + br + c = 0",
+      "a/r² + b/r + c = 0",
+      "ar + b = 0"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 69,
+    category: "equa_diff",
+    text: "Si l'équation caractéristique ar² + br + c = 0 admet une solution double r₀, la solution générale de l'équation homogène est :",
+    options: [
+      "y = λ e^{r₀ x}",
+      "y = (A + Bx) e^{r₀ x}",
+      "y = λ₁ cos(r₀ x) + λ₂ sin(r₀ x)",
+      "y = λ e^{x/r₀}"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 70,
+    category: "equa_diff",
+    text: "Si l'équation caractéristique admet deux solutions complexes conjuguées α ± iβ, la solution générale est de la forme :",
+    options: [
+      "y = e^{α x} (A cos(β x) + B sin(β x))",
+      "y = e^{β x} (A cos(α x) + B sin(α x))",
+      "y = (A + Bx) e^{α x} cos(β x)",
+      "y = A e^{α x} + B e^{β x}"
+    ],
+    correctIndex: 0
+  },
+  {
+    id: 71,
+    category: "equa_diff",
+    text: "Soit l'équation y'' + 2y' + 3y = x² + 2. Sous quelle forme doit-on chercher une solution particulière pour le second membre polynomial (avec c ≠ 0) ?",
+    options: [
+      "p(x) = ax + b",
+      "p(x) = ax² + bx + c",
+      "p(x) = ax³ + bx² + cx + d",
+      "p(x) = A cos(x) + B sin(x)"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 72,
+    category: "equa_diff",
+    text: "Lors de la recherche d'une solution particulière pour ay'' + by' + cy = d(x), la méthode où l'on pose y_p(x) = α(x)y₁(x) + β(x)y₂(x) s'appelle :",
+    options: [
+      "La méthode des coefficients indéterminés",
+      "La méthode d'Euler",
+      "La méthode de variation des constantes",
+      "La transformation de Laplace"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 73,
+    category: "equa_diff",
+    text: "Quel est l'ordre de l'équation différentielle (1+x²)y''y' - 2xy² + y' = 0 (Exemple 0.2) ?",
+    options: ["1", "2", "3", "4"],
+    correctIndex: 1
+  },
+  {
+    id: 74,
+    category: "equa_diff",
+    text: "D'après la Définition 0.2, intégrer une équation différentielle consiste à :",
+    options: [
+      "Trouver la dérivée la plus élevée",
+      "Trouver une fonction y = φ(x) vérifiant l'équation",
+      "Trouver les constantes arbitraires d'intégration",
+      "Déterminer les racines de l'équation caractéristique"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 75,
+    category: "equa_diff",
+    text: "Si P et Q sont continues, l'équation à variables séparables P(x)dx = Q(y)dy admet pour intégrales les solutions de l'équation (Théorème 0.1) :",
+    options: [
+      "F(x) = G(y) + c",
+      "F(x) + G(y) = c",
+      "F(x) × G(y) = c",
+      "F(x)/G(y) = c"
+    ],
+    correctIndex: 0
+  },
+  {
+    id: 76,
+    category: "equa_diff",
+    text: "La résolution de l'équation x + yy' = 0 (Exemple 0.4.1) conduit à l'équation des courbes intégrales suivante :",
+    options: [
+      "y = c e^{-x}",
+      "y = ±√(2c - x²)",
+      "y = cx",
+      "y = ln|x| + c"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 77,
+    category: "equa_diff",
+    text: "En posant z = y/x, l'équation homogène y' = f(y/x) se ramène à une équation à variables séparables de la forme (Équation 0.6) :",
+    options: [
+      "dx/x = dz / (f(z) - z)",
+      "dx/x = f(z) dz",
+      "dx = (f(z) - z) dz",
+      "dx/x = (f(z) / z) dz"
+    ],
+    correctIndex: 0
+  },
+  {
+    id: 78,
+    category: "equa_diff",
+    text: "La solution générale d'une équation différentielle linéaire du premier ordre sans second membre y' + A(x)y = 0 est :",
+    options: [
+      "y = λ e^{F(x)}",
+      "y = λ e^{-F(x)} où F est une primitive de A",
+      "y = λ ∫A(x)dx",
+      "y = constante"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 79,
+    category: "equa_diff",
+    text: "Dans la méthode de variation de la constante pour y' + A(x)y = B(x), on cherche une solution particulière sous la forme :",
+    options: [
+      "y_p(x) = λ e^{-F(x)} avec λ constante",
+      "y_p(x) = λ(x) e^{-F(x)} avec λ(x) fonction à déterminer",
+      "y_p(x) = A(x) e^{B(x)}",
+      "y_p(x) = B(x) e^{A(x)}"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 80,
+    category: "equa_diff",
+    text: "Que devient l'équation de Bernoulli y' + p(x)y = q(x)y^α si α = 0 ?",
+    options: [
+      "Une équation à variables séparables",
+      "Une équation linéaire sans second membre",
+      "Une équation différentielle linéaire avec second membre",
+      "Une équation homogène"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 81,
+    category: "equa_diff",
+    text: "Quel est le changement de variable correct pour résoudre une équation de Bernoulli y' + p(x)y = q(x)y^α avec α ∉ {0, 1} ?",
+    options: [
+      "z(x) = y(x)^α",
+      "z(x) = y(x)^{1-α}",
+      "z(x) = ln(y(x))",
+      "z(x) = 1 / y(x)"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 82,
+    category: "equa_diff",
+    text: "Si y₀ est une solution particulière d'une équation de Riccati, le changement de variable z = 1 / (y - y₀) permet d'obtenir :",
+    options: [
+      "Une équation différentielle linéaire du premier ordre en z",
+      "Une équation homogène",
+      "Une équation à variables séparables",
+      "Une autre équation de Riccati"
+    ],
+    correctIndex: 0
+  },
+  {
+    id: 83,
+    category: "equa_diff",
+    text: "L'équation différentielle y'' + y = 0 a pour solutions y₁ = sin x et y₂ = cos x. Sa solution générale est :",
+    options: [
+      "y = λ sin x",
+      "y = µ cos x",
+      "y = λ sin x + µ cos x",
+      "y = e^{x}(λ sin x + µ cos x)"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 84,
+    category: "equa_diff",
+    text: "Si on connaît une solution particulière non nulle y₁ de ay'' + by' + cy = 0, on peut chercher une seconde solution indépendante sous la forme :",
+    options: [
+      "y₂(x) = y₁(x) + constante",
+      "y₂(x) = e^{y₁(x)}",
+      "y₂(x) = z(x) y₁(x) où z est une fonction inconnue",
+      "y₂(x) = y₁'(x)"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 85,
+    category: "equa_diff",
+    text: "Pour l'équation y'' - 4y' + 4y = 0 (Exemple 0.9), la solution générale est :",
+    options: [
+      "y = A e^{2x} + B e^{-2x}",
+      "y = (A + Bx) e^{2x}",
+      "y = e^{2x}(A cos x + B sin x)",
+      "y = A cos(2x) + B sin(2x)"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 86,
+    category: "equa_diff",
+    text: "Dans la méthode de variation des constantes pour ay'' + by' + cy = d(x), on cherche y_p = α(x)y₁ + β(x)y₂. Quelles conditions doivent satisfaire α et β ?",
+    options: [
+      "α'y₁ + β'y₂ = 0 et α'y₁' + β'y₂' = d(x)/a",
+      "α y₁' + β y₂' = 0 et α'y₁ + β'y₂ = d(x)",
+      "α'y₁ + β'y₂ = d(x)/a et α'y₁' + β'y₂' = 0",
+      "α' = d(x) et β' = d(x)/a"
+    ],
+    correctIndex: 0
+  },
+  {
+    id: 87,
+    category: "equa_diff",
+    text: "Pour résoudre ay'' + by' = d(x) où d(x) est un polynôme (cas c = 0, b ≠ 0), on cherche un polynôme solution p(x) tel que :",
+    options: [
+      "deg(p) = deg(d) - 1",
+      "deg(p) = deg(d)",
+      "deg(p) = deg(d) + 1",
+      "deg(p) = deg(d) + 2"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 88,
+    category: "equa_diff",
+    text: "Pour ay'' + by' + cy = α cos(mx) + β sin(mx), si im est racine de l'équation caractéristique (φ(im) = 0), la solution particulière s'écrit sous la forme :",
+    options: [
+      "y_p(x) = p cos(mx) + q sin(mx)",
+      "y_p(x) = x(p cos(mx) + q sin(mx))",
+      "y_p(x) = x²(p cos(mx) + q sin(mx))",
+      "y_p(x) = e^{mx}(p cos(mx) + q sin(mx))"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 89,
+    category: "equa_diff",
+    text: "Pour l'équation y'' + y = sin x (Exemple 0.12), on a φ(i) = 0. La forme de la solution particulière est :",
+    options: [
+      "y_p(x) = p cos x + q sin x",
+      "y_p(x) = x(p cos x + q sin x)",
+      "y_p(x) = A e^x sin x",
+      "y_p(x) = p cos²x + q sin²x"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 90,
+    category: "equa_diff",
+    text: "Pour résoudre ay'' + by' + cy = λ e^{mx}, si m est racine double de l'équation caractéristique (φ(m) = φ'(m) = 0), on cherche y_p sous la forme :",
+    options: [
+      "y_p(x) = A e^{mx}",
+      "y_p(x) = Ax e^{mx}",
+      "y_p(x) = Ax² e^{mx}",
+      "y_p(x) = A e^{mx} + B"
+    ],
+    correctIndex: 2
+  },
+  {
+    id: 91,
+    category: "equa_diff",
+    text: "Soit l'équation y'' - 3y' + 2y = 4e^{3x} (Exemple 0.13). Sachant que m=3 n'est pas racine de r² - 3r + 2 = 0, la solution particulière est sous la forme :",
+    options: [
+      "y_p(x) = C x e^{3x}",
+      "y_p(x) = C e^{3x}",
+      "y_p(x) = C x² e^{3x}",
+      "y_p(x) = (Cx + D)e^{3x}"
+    ],
+    correctIndex: 1
+  },
+  {
+    id: 92,
+    category: "equa_diff",
+    text: "Quel principe utilise-t-on pour trouver une solution particulière à l'équation ay'' + by' + cy = d₁(x) + d₂(x) ?",
+    options: [
+      "Le principe de multiplication",
+      "Le principe de séparation des variables",
+      "Le principe de superposition",
+      "Le principe d'homogénéité"
+    ],
+    correctIndex: 2
   }
 ];

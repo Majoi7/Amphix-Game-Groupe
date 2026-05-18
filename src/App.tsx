@@ -8,6 +8,7 @@ import AdminScreen from './components/AdminScreen';
 import LiveRankingScreen from './components/LiveRankingScreen';
 
 const ADMIN_PASSWORD = 'elite';
+export const POINTS_PER_QUESTION = 100; // Changez ceci à 10 si vous souhaitez donner 10 points par question
 
 // --- CUSTOM HOOKS ---
 const useCountUp = (target: number, duration = 1500) => {
@@ -146,6 +147,38 @@ const BackgroundShapes = () => {
   );
 };
 
+const SpaceBackground = () => {
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 bg-[#0B0C10]">
+      {/* Stars */}
+      {[...Array(50)].map((_, i) => (
+        <motion.div
+          key={`star-${i}`}
+          initial={{ y: -20, opacity: 0 }}
+          animate={{
+            y: ['-10vh', '110vh'],
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{
+            duration: Math.random() * 5 + 5,
+            repeat: Infinity,
+            ease: 'linear',
+            delay: Math.random() * 5,
+          }}
+          className="absolute bg-white rounded-full"
+          style={{
+            left: `${Math.random() * 100}%`,
+            width: Math.random() * 3 + 1,
+            height: Math.random() * 3 + 1,
+            boxShadow: '0 0 4px #fff, 0 0 8px #fff',
+          }}
+        />
+      ))}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#1F2833]/30 mix-blend-overlay"></div>
+    </div>
+  );
+};
+
 // --- ENHANCED SPLASH SCREEN ---
 const SplashScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [progress, setProgress] = useState(0);
@@ -275,7 +308,7 @@ export default function App() {
           showToast('Accès refusé', true);
           window.location.hash = '#/';
         }
-      } else if (window.location.hash === '#/live-ranking') {
+      } else if (window.location.hash.startsWith('#/live-ranking')) {
         setCurrentScreen('live');
       } else {
         setCurrentScreen('entry');
@@ -307,6 +340,50 @@ export default function App() {
     return data;
   };
 
+  const [audioStarted, setAudioStarted] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const succesAudio = useRef<HTMLAudioElement | null>(null);
+  const termineAudio = useRef<HTMLAudioElement | null>(null);
+  const overAudio = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    audioRef.current = new Audio('/Beauty_And_A_Beat.mp3');
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.3;
+
+    succesAudio.current = new Audio('/succes.mp3');
+    succesAudio.current.volume = 1.0;
+    
+    termineAudio.current = new Audio('/termine.mp3');
+    termineAudio.current.volume = 1.0;
+
+    overAudio.current = new Audio('/over.mp3');
+    overAudio.current.volume = 1.0;
+
+    return () => {
+      if (audioRef.current) audioRef.current.pause();
+      if (succesAudio.current) succesAudio.current.pause();
+      if (termineAudio.current) termineAudio.current.pause();
+      if (overAudio.current) overAudio.current.pause();
+    };
+  }, []);
+
+  const playMusic = () => {
+    if (audioRef.current && !audioStarted) {
+      audioRef.current.play().catch(e => console.log("Audio play blocked", e));
+      setAudioStarted(true);
+    }
+  };
+
+  const stopMusic = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setAudioStarted(false);
+    }
+  };
+
   const playSound = (freq: number, dur: number, type: any = 'sine', vol = 0.1) => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -323,36 +400,90 @@ export default function App() {
   };
 
   const sounds = {
-    click: () => playSound(800, 0.05, 'square', 0.07),
+    click: () => {}, // Disabled as per user request
+    type: () => playSound(1200, 0.02, 'sine', 0.05), // Sound for settings/typing
+    start: () => {}, // Disabled as per user request
     correct: () => {
-      playSound(600, 0.1);
-      setTimeout(() => playSound(800, 0.1), 80);
-      setTimeout(() => playSound(1000, 0.15), 160);
+      if (succesAudio.current) {
+        succesAudio.current.currentTime = 0;
+        succesAudio.current.play().catch(() => {});
+      }
     },
     wrong: () => {
-      playSound(150, 0.2, 'sawtooth', 0.15);
-      setTimeout(() => playSound(100, 0.3, 'sawtooth', 0.1), 100);
+      playSound(150, 0.7, 'sawtooth', 0.6);
+      setTimeout(() => playSound(100, 0.8, 'sawtooth', 0.5), 100);
     },
     finish: () => {
-      playSound(523, 0.15);
-      setTimeout(() => playSound(659, 0.15), 150);
-      setTimeout(() => playSound(784, 0.15), 300);
-      setTimeout(() => playSound(1047, 0.3), 450);
+      if (termineAudio.current) {
+        termineAudio.current.currentTime = 0;
+        termineAudio.current.play().catch(() => {});
+      }
+    },
+    gameOver: () => {
+      if (overAudio.current) {
+        overAudio.current.currentTime = 0;
+        overAudio.current.play().catch(() => {});
+      }
+    },
+    stopAll: () => {
+      if (termineAudio.current) {
+        termineAudio.current.pause();
+        termineAudio.current.currentTime = 0;
+      }
+      if (overAudio.current) {
+        overAudio.current.pause();
+        overAudio.current.currentTime = 0;
+      }
+      if (succesAudio.current) {
+        succesAudio.current.pause();
+        succesAudio.current.currentTime = 0;
+      }
     },
     lifeUp: () => {
       playSound(880, 0.1);
       setTimeout(() => playSound(1100, 0.1), 100);
       setTimeout(() => playSound(1320, 0.2), 200);
+      // Applause simulation (white noise bursts)
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        for (let i = 0; i < 15; i++) {
+          setTimeout(() => {
+            const bufferSize = ctx.sampleRate * 0.1; // 100ms
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) {
+              data[j] = Math.random() * 2 - 1;
+            }
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1000 + Math.random() * 1000;
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.5, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            noise.start(ctx.currentTime);
+          }, Math.random() * 800);
+        }
+      } catch(e) {}
     },
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-white text-gray-900 font-sans p-4 relative overflow-hidden selection:bg-game-orange/30">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-[#0B0C10] md:bg-white text-white md:text-gray-900 font-sans p-4 relative overflow-hidden selection:bg-game-orange/30">
       <AnimatePresence>
         {showSplash && <SplashScreen key="splash" onComplete={() => setShowSplash(false)} />}
       </AnimatePresence>
 
-      {!showSplash && <BackgroundShapes />}
+      {!showSplash && (
+        <>
+          <div className="block md:hidden"><SpaceBackground /></div>
+          <div className="hidden md:block"><BackgroundShapes /></div>
+        </>
+      )}
       {!showSplash && <FloatingParticles />}
 
       <AnimatePresence>
@@ -391,11 +522,14 @@ export default function App() {
                   setPlayerName(pName);
                   setSession(s);
                   // We could store pScore/pPoints in a state or ref if needed
-                  sounds.click();
+                  sounds.start();
+                  sounds.stopAll();
+                  playMusic();
                   setCurrentScreen('quiz');
                 }}
                 showToast={showToast}
                 onShowRanking={() => setShowLiveModal(true)}
+                sounds={sounds}
               />
             </motion.div>
           )}
@@ -415,7 +549,12 @@ export default function App() {
                 sounds={sounds}
                 onComplete={(score: number, total: number, eliminated: boolean = false) => {
                   (window as any).scoreData = { score, total, eliminated };
-                  sounds.finish();
+                  stopMusic();
+                  if (eliminated) {
+                    sounds.gameOver();
+                  } else {
+                    sounds.finish();
+                  }
                   setCurrentScreen('arena');
                 }}
                 showToast={showToast}
@@ -436,6 +575,7 @@ export default function App() {
                 scoreData={(window as any).scoreData}
                 onRetry={() => {
                   sounds.click();
+                  sounds.stopAll();
                   setCurrentScreen('entry');
                 }}
                 onShowRanking={() => setShowLiveModal(true)}
@@ -451,7 +591,7 @@ export default function App() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <AdminScreen getActiveSession={getActiveSession} showToast={showToast} />
+              <AdminScreen getActiveSession={getActiveSession} showToast={showToast} sounds={sounds} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -459,13 +599,16 @@ export default function App() {
 
       {!showSplash && currentScreen === 'live' && (
         <div className="fixed inset-0 z-[100] bg-[#f4f7fa] overflow-y-auto w-full h-full">
-          <LiveRankingScreen />
+          <LiveRankingScreen sessionType={window.location.hash.includes('libre') ? 'libre' : 'active'} />
         </div>
       )}
 
       {!showSplash && showLiveModal && (
         <div className="fixed inset-0 z-[110] bg-[#f4f7fa] overflow-y-auto w-full h-full">
-          <LiveRankingScreen onClose={() => setShowLiveModal(false)} />
+          <LiveRankingScreen 
+            onClose={() => setShowLiveModal(false)}
+            sessionType={(session && session.groups === 'Libre') ? 'libre' : 'active'}
+          />
         </div>
       )}
     </div>
@@ -473,7 +616,7 @@ export default function App() {
 }
 
 // --- ENHANCED ENTRY SCREEN ---
-function EntryScreen({ session, setSession, getActiveSession, nameInput, setNameInput, onStart, showToast, onShowRanking }: any) {
+function EntryScreen({ session, setSession, getActiveSession, nameInput, setNameInput, onStart, showToast, onShowRanking, sounds }: any) {
   const [loading, setLoading] = useState(true);
   const [statusText, setStatusText] = useState('');
   const [validationInput, setValidationInput] = useState('');
@@ -700,9 +843,9 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="text-4xl font-black text-gray-900 tracking-tight leading-none mb-2"
+          className="text-4xl font-black text-white md:text-gray-900 tracking-tight leading-none mb-2"
         >
-          GAME
+          AMPHIX
           <br />
           <span className="text-game-red">QUIZ</span>
         </motion.h1>
@@ -710,7 +853,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="text-gray-500 font-medium tracking-wide"
+          className="text-gray-300 md:text-gray-500 font-medium tracking-wide"
         >
           Prêt à jouer ?
         </motion.p>
@@ -720,7 +863,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="bg-white/70 backdrop-blur-2xl border border-white/50 p-6 rounded-[2.5rem] shadow-2xl flex flex-col gap-5 relative overflow-hidden"
+        className="bg-white/10 md:bg-white/70 backdrop-blur-2xl border border-white/20 md:border-white/50 p-6 rounded-[2.5rem] shadow-2xl flex flex-col gap-5 relative overflow-hidden"
       >
         <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
 
@@ -741,7 +884,10 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
                 <input
                   type="text"
                   value={validationInput}
-                  onChange={(e) => setValidationInput(e.target.value)}
+                  onChange={(e) => {
+                    sounds?.type?.();
+                    setValidationInput(e.target.value);
+                  }}
                   className="w-full px-6 py-4 rounded-[2rem] bg-gray-50/80 border-2 border-transparent text-center text-lg font-bold text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 focus:bg-white focus:border-game-blue focus:ring-4 focus:ring-game-blue/20 shadow-inner"
                   placeholder="Code de validation"
                   onKeyDown={(e) => e.key === 'Enter' && !loading && handleValidateCode()}
@@ -803,7 +949,10 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
                 <input
                   type="text"
                   value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
+                  onChange={(e) => {
+                    sounds?.type?.();
+                    setNameInput(e.target.value);
+                  }}
                   className="w-full px-6 py-4 rounded-[2rem] bg-gray-50/80 border-2 border-transparent text-center text-lg font-bold text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 focus:bg-white focus:border-game-blue focus:ring-4 focus:ring-game-blue/20 shadow-inner"
                   placeholder="Entre ton pseudo"
                   onKeyDown={(e) =>
@@ -1036,7 +1185,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
     let newScore = score;
 
     if (isCorrect) {
-      newScore += 10;
+      newScore += POINTS_PER_QUESTION;
       if (newConsecutive === 3) {
         newIndividualPoints += 1;
         newConsecutive = 0;
@@ -1350,7 +1499,7 @@ function ArenaScreen({ scoreData, onRetry, onShowRanking }: any) {
   const eliminated = scoreData?.eliminated;
   const score = scoreData?.score || 0;
   const totalQuestions = scoreData?.total || 1;
-  const maxScore = totalQuestions * 10;
+  const maxScore = totalQuestions * POINTS_PER_QUESTION;
   const animatedScore = score; // Affichage instantané
   const [showPanda, setShowPanda] = useState(false);
 
