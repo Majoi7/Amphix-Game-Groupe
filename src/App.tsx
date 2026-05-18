@@ -8,7 +8,7 @@ import AdminScreen from './components/AdminScreen';
 import LiveRankingScreen from './components/LiveRankingScreen';
 
 const ADMIN_PASSWORD = 'elite';
-export const POINTS_PER_QUESTION = 100; // Changez ceci à 10 si vous souhaitez donner 10 points par question
+export const POINTS_PER_QUESTION = 10; // Changez ceci à 10 si vous souhaitez donner 10 points par question
 
 // --- CUSTOM HOOKS ---
 const useCountUp = (target: number, duration = 1500) => {
@@ -347,18 +347,35 @@ export default function App() {
   const termineAudio = useRef<HTMLAudioElement | null>(null);
   const overAudio = useRef<HTMLAudioElement | null>(null);
 
+  const primeAudio = useCallback(() => {
+    // Joue et met en pause immédiatement pour débloquer l'audio sur iOS/Safari
+    const playAndPause = (audio: HTMLAudioElement | null) => {
+      if (audio) {
+        audio.play().then(() => {
+          audio.pause();
+        }).catch(() => {});
+      }
+    };
+    playAndPause(audioRef.current);
+    playAndPause(succesAudio.current);
+    playAndPause(termineAudio.current);
+    playAndPause(overAudio.current);
+  }, []);
+
   useEffect(() => {
-    audioRef.current = new Audio('/Beauty_And_A_Beat.mp3');
+    const cacheBuster = `?t=${Date.now()}`;
+    
+    audioRef.current = new Audio('/Beauty_And_A_Beat.mp3' + cacheBuster);
     audioRef.current.loop = true;
     audioRef.current.volume = 0.3;
 
-    succesAudio.current = new Audio('/succes.mp3');
+    succesAudio.current = new Audio('/succes.mp3' + cacheBuster);
     succesAudio.current.volume = 1.0;
     
-    termineAudio.current = new Audio('/termine.mp3');
+    termineAudio.current = new Audio('/termine.mp3' + cacheBuster);
     termineAudio.current.volume = 1.0;
 
-    overAudio.current = new Audio('/over.mp3');
+    overAudio.current = new Audio('/over.mp3' + cacheBuster);
     overAudio.current.volume = 1.0;
 
     return () => {
@@ -400,6 +417,7 @@ export default function App() {
   };
 
   const sounds = {
+    prime: primeAudio,
     click: () => {}, // Disabled as per user request
     type: () => playSound(1200, 0.02, 'sine', 0.05), // Sound for settings/typing
     start: () => {}, // Disabled as per user request
@@ -678,6 +696,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
   };
 
   const handleValidateCode = async () => {
+    sounds?.prime?.();
     const inputCode = validationInput.trim().toUpperCase();
     if (!inputCode) return;
     
@@ -734,6 +753,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
   };
 
   const startQuiz = async () => {
+    sounds?.prime?.();
     if (!session || nameInput.trim().length < 2) return;
     if (session.groups && !selectedGroup) return showToast('Sélectionnez un groupe', true);
 
