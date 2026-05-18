@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Clock, Skull } from 'lucide-react';
 import { parseSafeDate } from '../App';
 
-export default function LiveRankingScreen() {
+export default function LiveRankingScreen({ onClose }: { onClose?: () => void }) {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [session, setSession] = useState<any>(null);
   const [eliminatedPlayer, setEliminatedPlayer] = useState<{id: string, name: string} | null>(null);
@@ -131,7 +131,15 @@ export default function LiveRankingScreen() {
   }, [session]);
 
   return (
-    <div className="min-h-screen bg-[#f4f7fa] w-full p-8 font-sans">
+    <div className="min-h-screen bg-[#f4f7fa] w-full p-8 font-sans relative">
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 p-3 bg-white hover:bg-gray-100 rounded-full shadow-md text-gray-500 transition-colors z-50"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      )}
       <div className="max-w-7xl mx-auto flex flex-col items-center">
         
         <div className="w-full flex justify-between items-center mb-12">

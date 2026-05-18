@@ -257,6 +257,7 @@ export const parseSafeDate = (d: string) => {
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentScreen, setCurrentScreen] = useState('entry');
+  const [showLiveModal, setShowLiveModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ msg: string; isError: boolean } | null>(null);
 
   const [session, setSession] = useState<any>(null);
@@ -394,6 +395,7 @@ export default function App() {
                   setCurrentScreen('quiz');
                 }}
                 showToast={showToast}
+                onShowRanking={() => setShowLiveModal(true)}
               />
             </motion.div>
           )}
@@ -417,6 +419,7 @@ export default function App() {
                   setCurrentScreen('arena');
                 }}
                 showToast={showToast}
+                onShowRanking={() => setShowLiveModal(true)}
               />
             </motion.div>
           )}
@@ -435,6 +438,7 @@ export default function App() {
                   sounds.click();
                   setCurrentScreen('entry');
                 }}
+                onShowRanking={() => setShowLiveModal(true)}
               />
             </motion.div>
           )}
@@ -458,12 +462,18 @@ export default function App() {
           <LiveRankingScreen />
         </div>
       )}
+
+      {!showSplash && showLiveModal && (
+        <div className="fixed inset-0 z-[110] bg-[#f4f7fa] overflow-y-auto w-full h-full">
+          <LiveRankingScreen onClose={() => setShowLiveModal(false)} />
+        </div>
+      )}
     </div>
   );
 }
 
 // --- ENHANCED ENTRY SCREEN ---
-function EntryScreen({ session, setSession, getActiveSession, nameInput, setNameInput, onStart, showToast }: any) {
+function EntryScreen({ session, setSession, getActiveSession, nameInput, setNameInput, onStart, showToast, onShowRanking }: any) {
   const [loading, setLoading] = useState(true);
   const [statusText, setStatusText] = useState('');
   const [validationInput, setValidationInput] = useState('');
@@ -621,7 +631,21 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
         .maybeSingle();
 
       if (existing) {
-        playerData = existing;
+        let newLives = isUnlimitedUsed ? 1000 : (session.initial_points || 3);
+        if (existing.individual_points !== 1000) {
+           newLives = isUnlimitedUsed ? 1000 : Math.max(existing.individual_points || 0, session.initial_points || 3);
+        }
+
+        const { data: updatedPlayer } = await supabase
+          .from('players')
+          .update({
+            individual_points: newLives,
+            group_name: selectedGroup || existing.group_name || null
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        playerData = updatedPlayer || existing;
       } else {
         const { data, error } = await supabase
           .from('players')
@@ -806,6 +830,23 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
           )}
         </AnimatePresence>
 
+        {session && !loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="flex justify-center mt-2"
+          >
+            <button
+              onClick={onShowRanking}
+              className="flex items-center gap-2 text-sm font-bold text-game-indigo hover:text-game-blue transition-colors"
+            >
+              <Trophy className="w-4 h-4" />
+              Voir le classement en direct
+            </button>
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -825,7 +866,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 }
 
 // --- ENHANCED QUIZ SCREEN ---
-function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
+function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRanking }: any) {
   const [localSession, setLocalSession] = useState(session);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -871,19 +912,38 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
   }, [playerId]);
 
   useEffect(() => {
-    const activeCats = localSession?.categories ? localSession.categories.split(',').map((c: string) => c.trim()) : [];
+    const activeCats = session?.categories ? session.categories.split(',').map((c: string) => c.trim()) : [];
     let filtered = ALL_QUESTIONS;
     if (activeCats.length > 0) {
       filtered = ALL_QUESTIONS.filter((q) => activeCats.includes(q.category));
     }
     
-    if (filtered.length === 0) {
-      filtered = ALL_QUESTIONS;
-    }
+    const fetchAndFilter = async () => {
+      try {
+        const { data } = await supabase.from('answers').select('question_index').eq('player_id', playerId);
+        if (data && data.length > 0) {
+          const answeredIds = data.map((d: any) => d.question_index);
+          const remaining = filtered.filter((q: any) => !answeredIds.includes(q.id));
+          if (remaining.length > 0) {
+            filtered = remaining;
+          }
+        }
+      } catch(e) {}
+      
+      if (filtered.length === 0) {
+        filtered = ALL_QUESTIONS;
+      }
+      
+      const shuf = [...filtered];
+      for (let i = shuf.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuf[i], shuf[j]] = [shuf[j], shuf[i]];
+      }
+      setQuestions(shuf);
+    };
 
-    const shuf = [...filtered].sort(() => Math.random() - 0.5);
-    setQuestions(shuf);
-  }, [localSession]);
+    fetchAndFilter();
+  }, []); // Run only once to avoid reshuffling during the game
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [answered, setAnswered] = useState(false);
@@ -919,8 +979,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
 
     const tick = () => {
       if (localSession.groups === 'Libre') {
-        const diff = Math.floor((Date.now() - startObj.getTime()) / 1000);
-        setTimeLeft(diff); // Acts as a stopwatch
+        setTimeLeft(null);
         return;
       }
       
@@ -1002,7 +1061,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
     try {
       await supabase.from('answers').insert({
         player_id: playerId,
-        question_index: currentIdx,
+        question_index: questions[currentIdx].id,
         selected_option: selectedOpt,
         is_correct: isCorrect,
       });
@@ -1090,7 +1149,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
           className="flex items-center gap-1.5 font-black text-game-red text-xl"
         >
           <Heart className="w-7 h-7 fill-current" />
-          {individualPoints}
+          {individualPoints >= 990 ? '∞' : individualPoints}
         </motion.div>
       </div>
 
@@ -1099,19 +1158,22 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
         animate={{ opacity: 1, y: 0 }}
         className="text-center text-sm font-black text-gray-500 mt-2 tracking-widest uppercase flex justify-center gap-6"
       >
-        <motion.span
-          className="flex items-center gap-2"
+        <motion.button
+          className="flex items-center gap-2 hover:text-game-orange transition-colors"
           whileHover={{ scale: 1.05 }}
+          onClick={onShowRanking}
         >
           <Trophy className="w-4 h-4 text-game-orange" /> {score} PTS
-        </motion.span>
-        <motion.span
-          className={`flex items-center gap-2 transition-colors ${isUrgent ? 'text-game-red' : ''}`}
-          animate={isUrgent ? { scale: [1, 1.1, 1] } : {}}
-          transition={{ duration: 0.5, repeat: isUrgent ? Infinity : 0 }}
-        >
-          <Clock className="w-4 h-4" /> {timeStr}
-        </motion.span>
+        </motion.button>
+        {timeLeft !== null && (
+          <motion.span
+            className={`flex items-center gap-2 transition-colors ${isUrgent ? 'text-game-red' : ''}`}
+            animate={isUrgent ? { scale: [1, 1.1, 1] } : {}}
+            transition={{ duration: 0.5, repeat: isUrgent ? Infinity : 0 }}
+          >
+            <Clock className="w-4 h-4" /> {timeStr}
+          </motion.span>
+        )}
       </motion.div>
 
       {/* Question Counter */}
@@ -1284,7 +1346,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast }: any) {
 }
 
 // --- ENHANCED ARENA SCREEN ---
-function ArenaScreen({ scoreData, onRetry }: any) {
+function ArenaScreen({ scoreData, onRetry, onShowRanking }: any) {
   const eliminated = scoreData?.eliminated;
   const score = scoreData?.score || 0;
   const totalQuestions = scoreData?.total || 1;
@@ -1409,12 +1471,13 @@ function ArenaScreen({ scoreData, onRetry }: any) {
           <motion.button
             whileHover={{ scale: 1.1, y: -2 }}
             whileTap={{ scale: 0.95 }}
+            onClick={onShowRanking}
             className="flex flex-col items-center gap-2 hover:text-game-teal transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <Trophy className="w-5 h-5 text-gray-600" />
             </div>
-            <span className="text-xs uppercase tracking-wider">Meilleur Score</span>
+            <span className="text-xs uppercase tracking-wider">Classement</span>
           </motion.button>
         </div>
       </motion.div>

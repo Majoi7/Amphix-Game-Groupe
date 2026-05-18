@@ -297,13 +297,18 @@ export default function AdminScreen({ getActiveSession, showToast }: any) {
   };
 
   const deleteAll = async () => {
-    if (!session || !confirm('Supprimer TOUS les joueurs ?')) return;
+    if (!session || !confirm('Supprimer TOUS les joueurs de cette session ?')) return;
     try {
-      const pIds = leaderboard.flatMap((g: any) => g.players.map((p: any) => p.id));
-      if (pIds.length) {
-        await supabase.from('answers').delete().in('player_id', pIds);
-        await supabase.from('players').delete().eq('session_id', session.id);
+      const { data: playersInfo } = await supabase.from('players').select('id').eq('session_id', session.id);
+      if (playersInfo && playersInfo.length > 0) {
+        const pIds = playersInfo.map((p: any) => p.id);
+        // Supprimer par lots pour éviter les limites de taille de requête
+        for (let i = 0; i < pIds.length; i += 100) {
+           await supabase.from('answers').delete().in('player_id', pIds.slice(i, i + 100));
+        }
       }
+      await supabase.from('players').delete().eq('session_id', session.id);
+      
       showToast('Tous supprimés');
       refresh();
     } catch(e) {}
