@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Clock, Skull } from 'lucide-react';
 import { parseSafeDate } from '../App';
 
-export default function LiveRankingScreen({ onClose }: { onClose?: () => void }) {
+export default function LiveRankingScreen({ onClose, sessionType }: { onClose?: () => void; sessionType?: string }) {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [session, setSession] = useState<any>(null);
   const [eliminatedPlayer, setEliminatedPlayer] = useState<{id: string, name: string} | null>(null);

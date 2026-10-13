@@ -5,11 +5,23 @@ import { Trophy, Users, Clock, Play, Square, Trash2, LogOut, Key, X, Plus } from
 
 import { parseSafeDate } from '../App';
 import SQLInstruction from './SQLInstruction';
-import { ALL_QUESTIONS } from '../data/questions';
+import { SHARED_QUESTIONS, getAvailableCategories } from '../data/sharedQuestions';
 
-const AVAILABLE_CATEGORIES = Array.from(new Set(ALL_QUESTIONS.map((q: any) => q.category)));
+const AVAILABLE_CATEGORIES = getAvailableCategories();
 
-export default function AdminScreen({ getActiveSession, showToast, sounds }: any) {
+export default function AdminScreen({
+  getActiveSession,
+  showToast,
+  sounds,
+  updateValidationCode,
+  updateUnlimitedCodes,
+  updateSessionGroups,
+  startSession,
+  stopSession,
+  deletePlayer,
+  deleteAllPlayers,
+  getActiveSessions
+}: any) {
   const [session, setSession] = useState<any>(null);
   const [duration, setDuration] = useState(10);
   
@@ -35,83 +47,112 @@ export default function AdminScreen({ getActiveSession, showToast, sounds }: any
     setValidationCode(newCodesStr);
     setAllGeneratedCodes(codes);
     localStorage.setItem('adminAllCodes', JSON.stringify(codes));
-    
+
     if (session && session.status === 'active') {
       try {
-        await supabase.from('sessions').update({ validation_code: newCodesStr }).eq('id', session.id);
+        const response = await updateValidationCode(session.id, newCodesStr);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Failed to update session codes", errorData);
+          showToast('Erreur lors de la mise à jour des codes', true);
+          return;
+        }
         refresh();
       } catch (e) {
         console.error("Failed to update session codes", e);
+        showToast('Erreur de connexion', true);
       }
     }
-    
+
     showToast(`${count} nouveaux codes générés`);
   };
 
   const addSingleCode = async () => {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
-    
+
     let currentCodesStr = validationCode;
     if (session && session.status === 'active') {
       currentCodesStr = session.validation_code || '';
     }
-    
+
     const newStr = currentCodesStr ? `${currentCodesStr}, ${code}` : code;
-    
+
     setValidationCode(newStr);
     const updatedAll = [...allGeneratedCodes, code];
     setAllGeneratedCodes(updatedAll);
     localStorage.setItem('adminAllCodes', JSON.stringify(updatedAll));
-    
+
     if (session && session.status === 'active') {
       try {
-        await supabase.from('sessions').update({ validation_code: newStr }).eq('id', session.id);
+        const response = await updateValidationCode(session.id, newStr);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Failed to update session codes", errorData);
+          showToast('Erreur lors de la mise à jour des codes', true);
+          return;
+        }
         refresh();
       } catch (e) {
         console.error("Failed to update session codes", e);
+        showToast('Erreur de connexion', true);
       }
     }
-    
+
     showToast('Nouveau code ajouté');
   };
 
   const addUnlimitedCode = async () => {
     const code = 'AMPHIX-' + Math.floor(1000 + Math.random() * 9000).toString();
     try {
-      const { data: libreSession } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      // First try to get the libre session via API
+      const sessionsResponse = await getActiveSessions();
+      if (!sessionsResponse.ok) {
+        const errorData = await sessionsResponse.json();
+        console.error("Failed to get active sessions", errorData);
+        showToast('Erreur lors de la récupération des sessions', true);
+        return;
+      }
+      const sessionsData = await sessionsResponse.json();
+      const libreSession = sessionsData.libreSession;
+
       const currentCodesStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
       const newStr = currentCodesStr ? `${currentCodesStr}, ${code}` : code;
-      
+
       setUnlimitedCode(newStr);
-      
+
       if (libreSession) {
-        await supabase.from('sessions').update({ unlimited_codes: newStr }).eq('id', libreSession.id);
+        // Update existing libre session
+        const response = await updateUnlimitedCodes(libreSession.id, newStr);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Failed to update unlimited codes", errorData);
+          showToast('Erreur lors de la mise à jour des codes illimités', true);
+          return;
+        }
       } else {
-        const { error } = await supabase.from('sessions').insert({
-          start_time: new Date().toISOString(),
-          status: 'active',
-          duration_seconds: 0,
-          validation_code: '',
-          unlimited_codes: newStr,
-          categories: AVAILABLE_CATEGORIES.join(','),
-          groups: 'Libre',
-          initial_points: 3
-        });
-        if (error) {
-          console.error("Insert error for libre session details: ", error);
-          if (error.code === '23514') {
-             setShowSqlInstruction(true);
-             showToast('Mise à jour de la base de données requise !', true);
-             return;
-          }
-          showToast('Erreur SQL, vérifier console', true);
+        // Create new libre session via API
+        const startResponse = await startSession(
+          0, // duration in minutes
+          AVAILABLE_CATEGORIES, // categories
+          '', // validation_code
+          newStr, // unlimited_codes
+          ['Libre'], // groups
+          3 // initial_points
+        );
+
+        if (!startResponse.ok) {
+          const errorData = await startResponse.json();
+          console.error("Failed to create libre session", errorData);
+          showToast('Erreur lors de la création de la session libre', true);
           return;
         }
       }
+
       refresh();
       showToast('Nouveau code illimité ajouté');
     } catch (e) {
       console.error("Failed to update unlimited codes", e);
+      showToast('Erreur de connexion', true);
     }
   };
 
@@ -129,19 +170,40 @@ export default function AdminScreen({ getActiveSession, showToast, sounds }: any
 
   const deleteUnlimitedCode = async (codeToRemove: string) => {
     try {
-      const { data: libreSession } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
+      // First try to get the libre session via API
+      const sessionsResponse = await getActiveSessions();
+      if (!sessionsResponse.ok) {
+        const errorData = await sessionsResponse.json();
+        console.error("Failed to get active sessions", errorData);
+        showToast('Erreur lors de la récupération des sessions', true);
+        return;
+      }
+      const sessionsData = await sessionsResponse.json();
+      const libreSession = sessionsData.libreSession;
+
       const currentStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
       const newArray = currentStr.split(',').map(c => c.trim()).filter(Boolean).filter(c => c !== codeToRemove);
       const newStr = newArray.join(', ');
-      
+
       setUnlimitedCode(newStr);
-      
+
       if (libreSession) {
-        await supabase.from('sessions').update({ unlimited_codes: newStr }).eq('id', libreSession.id);
+        // Update existing libre session
+        const response = await updateUnlimitedCodes(libreSession.id, newStr);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Failed to update unlimited codes", errorData);
+          showToast('Erreur lors de la mise à jour des codes illimités', true);
+          return;
+        }
       }
+
       refresh();
       showToast('Code supprimé');
-    } catch(e) {}
+    } catch(e) {
+      console.error("Error deleting unlimited code", e);
+      showToast('Erreur de connexion', true);
+    }
   };
 
   const currentUnlimitedCodes = unlimitedCode.split(',').map((c: string) => c.trim()).filter(Boolean);
@@ -158,45 +220,46 @@ export default function AdminScreen({ getActiveSession, showToast, sounds }: any
   const [libreSession, setLibreSession] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'active' | 'libre'>('active');
 
-  const updateSessionGroups = async (newGroups: string[]) => {
-    if (session && session.status === 'active') {
-      try {
-        await supabase.from('sessions').update({ groups: newGroups.join(', ') }).eq('id', session.id);
-        refresh();
-      } catch (e) {
-        console.error("Failed to update session groups", e);
-      }
-    }
-  };
-
   const refresh = async () => {
     try {
-      const s = await getActiveSession();
-      setSession(s);
-      
-      const { data: ls } = await supabase.from('sessions').select('*').eq('status', 'active').eq('groups', 'Libre').maybeSingle();
-      setLibreSession(ls);
-      if (ls) {
-        setUnlimitedCode(ls.unlimited_codes || '');
+      const response = await getActiveSessions();
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to get active sessions", errorData);
+        showToast('Erreur lors de la récupération des sessions', true);
+        return;
       }
-      
-      if (s && s.status === 'active') {
-        if (s.validation_code !== undefined) {
-          setValidationCode(s.validation_code || '');
+      const sessionsData = await response.json();
+      const activeSession = sessionsData.activeSession;
+      const libreSession = sessionsData.libreSession;
+
+      setSession(activeSession);
+      setLibreSession(libreSession);
+
+      if (libreSession) {
+        setUnlimitedCode(libreSession.unlimited_codes || '');
+      }
+
+      if (activeSession && activeSession.status === 'active') {
+        if (activeSession.validation_code !== undefined) {
+          setValidationCode(activeSession.validation_code || '');
         }
-        if (s.groups !== undefined) {
-          setGroups(s.groups ? s.groups.split(',').map((g: string) => g.trim()).filter(Boolean) : []);
+        if (activeSession.groups !== undefined) {
+          setGroups(activeSession.groups ? activeSession.groups.split(',').map((g: string) => g.trim()).filter(Boolean) : []);
         }
       }
 
       if (viewMode === 'active') {
-        if (s) fetchLeaderboard(s.id);
+        if (activeSession) fetchLeaderboard(activeSession.id);
         else setLeaderboard([]);
       } else {
-        if (ls) fetchLeaderboard(ls.id);
+        if (libreSession) fetchLeaderboard(libreSession.id);
         else setLeaderboard([]);
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error("Error in refresh:", e);
+      showToast('Erreur de connexion', true);
+    }
   };
 
   useEffect(() => {
@@ -265,73 +328,26 @@ export default function AdminScreen({ getActiveSession, showToast, sounds }: any
     } catch(e) {}
   };
 
-  const startSession = async () => {
-    sounds?.click?.();
-    if (selectedCategories.length === 0) return showToast('Sélectionnez au moins une catégorie', true);
-    if (!validationCode || groups.length === 0) return showToast('Veuillez générer des codes et des groupes', true);
 
-    const categoryStr = selectedCategories.join(',');
-    
-    try {
-      const { error } = await supabase.from('sessions').insert({
-        start_time: new Date().toISOString(),
-        duration_seconds: duration * 60,
-        status: 'active',
-        categories: categoryStr,
-        validation_code: validationCode,
-        unlimited_codes: unlimitedCode,
-        groups: groups.join(', '),
-        initial_points: initialPoints
-      });
-      if (error) {
-        console.error("Insert session error:", error);
-        setShowSqlInstruction(true);
-        return showToast('Erreur (Base de données à mettre à jour ?)', true);
-      }
-      setShowSqlInstruction(false);
-      showToast('✅ Session lancée !');
-      refresh();
-    } catch(e) {
-      showToast('Erreur lancement', true);
-    }
-  };
+  if (!session) return;
 
-  const stopSession = async () => {
-    if (!session) return;
-    try {
-      await supabase.from('sessions').update({ status: 'finished' }).eq('id', session.id);
-      showToast('⏹️ Session arrêtée.');
-      refresh();
-    } catch(e) {}
-  };
-
-  const deletePlayer = async (id: string, name: string) => {
-    if (!confirm(`Supprimer ${name} ?`)) return;
-    try {
-      await supabase.from('answers').delete().eq('player_id', id);
-      await supabase.from('players').delete().eq('id', id);
-      showToast('Joueur supprimé');
-      refresh();
-    } catch(e) {}
-  };
-
-  const deleteAll = async () => {
+  const handleDeleteAll = async () => {
     const targetSession = viewMode === 'active' ? session : libreSession;
     if (!targetSession || !confirm(`Supprimer TOUS les joueurs de la session ${viewMode === 'active' ? 'normale' : 'libre'} ?`)) return;
     try {
-      const { data: playersInfo } = await supabase.from('players').select('id').eq('session_id', targetSession.id);
-      if (playersInfo && playersInfo.length > 0) {
-        const pIds = playersInfo.map((p: any) => p.id);
-        // Supprimer par lots pour éviter les limites de taille de requête
-        for (let i = 0; i < pIds.length; i += 100) {
-           await supabase.from('answers').delete().in('player_id', pIds.slice(i, i + 100));
-        }
+      const response = await deleteAllPlayers({ sessionId: targetSession.id });
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to delete all players", errorData);
+        showToast('Erreur lors de la suppression de tous les joueurs', true);
+        return;
       }
-      await supabase.from('players').delete().eq('session_id', targetSession.id);
-      
       showToast('Tous supprimés');
       refresh();
-    } catch(e) {}
+    } catch(e) {
+      console.error("Error deleting all players:", e);
+      showToast('Erreur de connexion', true);
+    }
   };
 
   const isFinished = session && (new Date() >= new Date(parseSafeDate(session.start_time).getTime() + session.duration_seconds*1000) || session.status !== 'active');
@@ -555,10 +571,10 @@ export default function AdminScreen({ getActiveSession, showToast, sounds }: any
                   <Play className="w-4 h-4" /> Plein Écran
                 </motion.button>
                 {((viewMode === 'active' && session) || (viewMode === 'libre' && libreSession)) && (
-                  <motion.button 
+                  <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={deleteAll} 
+                    onClick={handleDeleteAll}
                     className="text-xs w-max bg-red-50 text-game-red px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-game-red hover:text-white transition-colors flex items-center gap-1.5 shadow-sm"
                   >
                     <Trash2 className="w-4 h-4" /> Effacer Classement
