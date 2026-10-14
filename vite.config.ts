@@ -14,6 +14,12 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+      // Vite's default order tries `.js` BEFORE `.ts`, so a bare specifier like
+      // `./data/questions` resolved to the stale `src/data/questions.js`
+      // duplicate instead of `src/data/questions.ts`. That silently shipped a
+      // 66-question dataset instead of the real 356-question one. Preferring
+      // the TypeScript sources removes the ambiguity for every importer.
+      extensions: ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs', '.json'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

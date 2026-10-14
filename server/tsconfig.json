@@ -1,14 +1,16 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "outDir": "../dist/server",
+    "outDir": "../dist",
     "rootDir": "../",
     "noEmit": false,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "moduleResolution": "node16",
+    "module": "Node16"
   },
   "include": [
     "./src/**/*",
-    "../src/data/**/*"
+    "../src/data/questions.ts"
   ],
   "exclude": [
     "node_modules",

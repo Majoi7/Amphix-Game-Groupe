@@ -20,7 +20,8 @@ export default function AdminScreen({
   stopSession,
   deletePlayer,
   deleteAllPlayers,
-  getActiveSessions
+  getActiveSessions,
+  isValidated
 }: any) {
   const [session, setSession] = useState<any>(null);
   const [duration, setDuration] = useState(10);
@@ -105,14 +106,7 @@ export default function AdminScreen({
     const code = 'AMPHIX-' + Math.floor(1000 + Math.random() * 9000).toString();
     try {
       // First try to get the libre session via API
-      const sessionsResponse = await getActiveSessions();
-      if (!sessionsResponse.ok) {
-        const errorData = await sessionsResponse.json();
-        console.error("Failed to get active sessions", errorData);
-        showToast('Erreur lors de la récupération des sessions', true);
-        return;
-      }
-      const sessionsData = await sessionsResponse.json();
+      const sessionsData = await getActiveSessions();
       const libreSession = sessionsData.libreSession;
 
       const currentCodesStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
@@ -171,14 +165,7 @@ export default function AdminScreen({
   const deleteUnlimitedCode = async (codeToRemove: string) => {
     try {
       // First try to get the libre session via API
-      const sessionsResponse = await getActiveSessions();
-      if (!sessionsResponse.ok) {
-        const errorData = await sessionsResponse.json();
-        console.error("Failed to get active sessions", errorData);
-        showToast('Erreur lors de la récupération des sessions', true);
-        return;
-      }
-      const sessionsData = await sessionsResponse.json();
+      const sessionsData = await getActiveSessions();
       const libreSession = sessionsData.libreSession;
 
       const currentStr = libreSession ? (libreSession.unlimited_codes || '') : unlimitedCode;
@@ -219,17 +206,15 @@ export default function AdminScreen({
   const [showSqlInstruction, setShowSqlInstruction] = useState(false);
   const [libreSession, setLibreSession] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'active' | 'libre'>('active');
+      const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const refresh = async () => {
+    // Gate refresh calls based on validation state
+    if (!isValidated) {
+      return;
+    }
     try {
-      const response = await getActiveSessions();
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Failed to get active sessions", errorData);
-        showToast('Erreur lors de la récupération des sessions', true);
-        return;
-      }
-      const sessionsData = await response.json();
+      const sessionsData = await getActiveSessions();
       const activeSession = sessionsData.activeSession;
       const libreSession = sessionsData.libreSession;
 
@@ -329,13 +314,15 @@ export default function AdminScreen({
   };
 
 
-  if (!session) return;
+  // No early return here: when no session is running the dashboard must still
+  // render so the admin can create one. Returning early blanked the whole page
+  // and made it impossible to start a session from a fresh state.
 
   const handleDeleteAll = async () => {
     const targetSession = viewMode === 'active' ? session : libreSession;
     if (!targetSession || !confirm(`Supprimer TOUS les joueurs de la session ${viewMode === 'active' ? 'normale' : 'libre'} ?`)) return;
     try {
-      const response = await deleteAllPlayers({ sessionId: targetSession.id });
+      const response = await deleteAllPlayers(targetSession.id);
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to delete all players", errorData);
@@ -352,7 +339,6 @@ export default function AdminScreen({
 
   const isFinished = session && (new Date() >= new Date(parseSafeDate(session.start_time).getTime() + session.duration_seconds*1000) || session.status !== 'active');
 
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const toggleGroup = (gn: string) => setExpandedGroups(p => ({ ...p, [gn]: !p[gn] }));
 
   return (
@@ -469,7 +455,11 @@ export default function AdminScreen({
                        <button onClick={() => {
                          const newGroups = groups.filter((_, i) => i !== idx);
                          setGroups(newGroups);
-                         updateSessionGroups(newGroups);
+                         // Only persist when a session is live, and pass its id -
+                         // the endpoint requires it (it was called with the
+                         // groups array as the sessionId).
+                         const targetId = viewMode === 'active' ? session?.id : libreSession?.id;
+                         if (targetId) updateSessionGroups(targetId, newGroups);
                        }} className="text-blue-300 hover:text-game-blue transition-colors">
                          <X className="w-3 h-3" />
                        </button>
@@ -480,21 +470,24 @@ export default function AdminScreen({
             </div>
 
             <div className="flex flex-col gap-3 relative z-10">
-              <motion.button 
+              <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 disabled={!!session && !isFinished}
-                onClick={startSession}
+                onClick={() => startSession(duration, selectedCategories, validationCode, unlimitedCode, groups, initialPoints)}
                 className="w-full bg-game-teal hover:bg-[#28a745] disabled:opacity-50 disabled:grayscale text-white font-black py-4 rounded-2xl shadow-[0_8px_16px_rgba(52,199,89,0.3)] flex items-center justify-center gap-2 transition-all uppercase tracking-wide text-sm"
               >
                 <Play className="w-5 h-5 fill-current" /> DÉMARRER SESSION
               </motion.button>
-              
-              <motion.button 
+
+              <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 disabled={!session || isFinished}
-                onClick={stopSession}
+                onClick={() => {
+                  const sessionId = viewMode === 'active' ? session?.id : libreSession?.id;
+                  if (sessionId) stopSession(sessionId);
+                }}
                 className="w-full bg-white text-game-red hover:bg-red-50 disabled:opacity-50 disabled:grayscale font-black py-3 rounded-2xl border-2 border-red-100 hover:border-red-200 transition-all flex items-center justify-center gap-2 uppercase tracking-wide text-sm"
               >
                 <Square className="w-5 h-5 fill-current" /> ARRÊTER MATCH
@@ -822,7 +815,8 @@ export default function AdminScreen({
                   if (e.key === 'Enter' && newGroupName.trim()) {
                     const newGroups = [...groups, newGroupName.trim()];
                     setGroups(newGroups);
-                    updateSessionGroups(newGroups);
+                    const sessionId = viewMode === 'active' ? session?.id : libreSession?.id;
+                    if (sessionId) updateSessionGroups(sessionId, newGroups);
                     setNewGroupName('');
                     setShowGroupModal(false);
                     showToast('Groupe créé !');
@@ -835,7 +829,8 @@ export default function AdminScreen({
                   if (newGroupName.trim()) {
                     const newGroups = [...groups, newGroupName.trim()];
                     setGroups(newGroups);
-                    updateSessionGroups(newGroups);
+                    const sessionId = viewMode === 'active' ? session?.id : libreSession?.id;
+                    if (sessionId) updateSessionGroups(sessionId, newGroups);
                     setNewGroupName('');
                     setShowGroupModal(false);
                     showToast('Groupe créé !');

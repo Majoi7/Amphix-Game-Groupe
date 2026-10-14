@@ -1,4 +1,6 @@
 import express, { Request, Response, NextFunction, CookieOptions } from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
 
 // Extend Express Request interface to include admin property
 interface AuthRequest extends Request {
@@ -15,7 +17,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
-import { SERVER_QUESTIONS, getSanitizedQuestions, validateAnswer } from './questions';
+import { SERVER_QUESTIONS, getSanitizedQuestions, validateAnswer } from './questions.js';
 
 // Load environment variables
 dotenv.config({ path: './server/.env' });
@@ -33,7 +35,7 @@ const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5'
 
 // Player authentication variables
 const playerSessionName = process.env.PLAYER_SESSION_NAME || 'amphix_player_session';
-const playerJwtSecret = process.env.PLAYER_JWT_SECRET;
+const isProduction = process.env.NODE_ENV === 'production';
 
 if (!adminPasswordHash) {
   throw new Error('Missing ADMIN_PASSWORD_HASH environment variable. Please set it with a bcrypt hash of the admin password.');
@@ -43,18 +45,77 @@ if (!jwtSecret) {
   throw new Error('Missing JWT_SECRET environment variable. Please set it to a secure random string.');
 }
 
-// Rate limiting middleware
-const apiLimiter = rateLimit({
+// Player JWT secret: must be explicit in production.
+// In development we derive a distinct value from JWT_SECRET so a missing
+// PLAYER_JWT_SECRET never blocks local startup, while still keeping the two
+// token families cryptographically separated (a player token can never be
+// accepted as an admin token and vice versa).
+let playerJwtSecret = process.env.PLAYER_JWT_SECRET;
+if (!playerJwtSecret) {
+  if (isProduction) {
+    throw new Error('Missing PLAYER_JWT_SECRET environment variable. Please set it to a secure random string.');
+  }
+  playerJwtSecret = `${jwtSecret}:player-dev`;
+  console.warn('[Config] PLAYER_JWT_SECRET absent - valeur derivee de JWT_SECRET (developpement uniquement).');
+}
+
+// --- Rate limiting -------------------------------------------------------
+// Three limiters with different jobs. Everything is keyed by IP, which matters:
+// a whole class usually shares one school NAT, so a "reasonable" per-user limit
+// silently locks out most of the room.
+//  * authLimiter protects the single admin password from brute force.
+//  * playerLoginLimiter is deliberately generous because every player of a
+//    session logs in once, from the same IP.
+//  * apiLimiter is a coarse safety net for the rest, sized for live polling.
+const authLimiter = rateLimit({
   windowMs: rateLimitWindowMs,
-  max: rateLimitMaxRequests,
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  max: 20, // 20 admin login attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives. Merci de patienter quelques minutes.' },
 });
 
-// Apply rate limiting to all API routes
+const playerLoginLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: 1000, // enough for a large class behind one NAT
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de connexions depuis ce reseau. Merci de patienter.' },
+});
+
+const apiLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: Math.max(rateLimitMaxRequests, 2000), // polling-safe for a live quiz
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// --- CORS ----------------------------------------------------------------
+// CORS_ORIGINS accepts a comma-separated list so a single deployment can serve
+// localhost, a LAN address (phones on the same Wi-Fi) and the production URL.
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Requests without an Origin header (curl, health checks, same-origin) are allowed.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // In development, also accept any localhost / private-LAN origin so the
+    // host can play from a phone without editing .env for every IP change.
+    if (!isProduction && /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origine non autorisee par CORS: ${origin}`));
+  },
+  credentials: true, // Allow cookies to be sent with requests
+}));
 app.use('/api/', apiLimiter);
 
 // Middleware
+app.use(cookieParser()); // Parse cookies from requests
 app.use(express.json());
 
 // Supabase client (service role for backend)
@@ -84,6 +145,7 @@ const authenticateAdmin = (req: AuthRequest, res: Response, next: NextFunction) 
     req.admin = { id: decoded.id };
     next();
   } catch (err) {
+    console.warn('[Auth] Jeton admin rejete:', (err as Error).message);
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
@@ -129,7 +191,7 @@ app.get('/api/config', (_req: Request, res: Response) => {
 // ADMIN AUTHENTICATION ENDPOINTS
 
 // Login endpoint
-app.post('/api/admin/login', async (req: AuthRequest, res: Response) => {
+app.post('/api/admin/login', authLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const { password } = req.body;
 
@@ -153,11 +215,17 @@ app.post('/api/admin/login', async (req: AuthRequest, res: Response) => {
       { expiresIn: '24h' } // Token expires in 24 hours
     );
 
-    // Set httpOnly cookie
+    // Set httpOnly cookie for admin session.
+    // SameSite=None is only honoured by browsers when the cookie is also
+    // Secure, so pairing it with secure:false made the browser silently drop
+    // it - the admin was logged in server-side but every later request 401'd.
+    // Over local HTTP we use Lax (same-site, ports do not count), and only
+    // switch to None+Secure once HTTPS is actually in use.
     res.cookie(sessionName, token, {
       httpOnly: true,
-      secure: secureCookies, // Only send over HTTPS in production
-      sameSite: 'strict',
+      secure: secureCookies,
+      sameSite: secureCookies ? 'none' : 'lax',
+      path: '/',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
     });
 
@@ -175,8 +243,9 @@ app.post('/api/admin/login', async (req: AuthRequest, res: Response) => {
 app.post('/api/admin/logout', authenticateAdmin, (_req: Request, res: Response) => {
   res.clearCookie(sessionName, {
     httpOnly: true,
-    secure: secureCookies,
-    sameSite: 'strict'
+    secure: secureCookies, // Must match the login cookie settings
+    sameSite: secureCookies ? 'none' : 'lax',
+    path: '/'
   });
 
   res.json({ message: 'Logged out successfully' });
@@ -333,27 +402,35 @@ app.post('/api/admin/sessions/start', authenticateAdmin, async (req: AuthRequest
     } = req.body;
 
     // Validate required fields
-    if (!duration || typeof duration !== 'number' || duration <= 0) {
-      return res.status(400).json({ error: 'Valid duration is required' });
+    // duration 0 means "no time limit" (Libre mode), so only negative values
+    // and non-numbers are rejected.
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
+      return res.status(400).json({ error: 'Valid duration is required (0 = no limit)' });
     }
 
     if (!Array.isArray(categories) || categories.length === 0) {
       return res.status(400).json({ error: 'At least one category is required' });
     }
 
-    if (!validationCode || typeof validationCode !== 'string') {
-      return res.status(400).json({ error: 'Validation code is required' });
+    // A Libre session is opened by unlimited codes and has no validation code,
+    // so an empty string is legitimate here.
+    if (typeof validationCode !== 'string') {
+      return res.status(400).json({ error: 'Validation code must be a string (may be empty)' });
     }
 
-    if (unlimitedCodes === undefined || typeof unlimitedCodes !== 'string') {
-      return res.status(400).json({ error: 'Unlimited codes are required' });
+    if (typeof unlimitedCodes !== 'string') {
+      return res.status(400).json({ error: 'Unlimited codes must be a string (may be empty)' });
+    }
+
+    if (validationCode.trim() === '' && unlimitedCodes.trim() === '') {
+      return res.status(400).json({ error: 'At least one validation code or unlimited code is required' });
     }
 
     if (!Array.isArray(groups) || groups.length === 0) {
       return res.status(400).json({ error: 'At least one group is required' });
     }
 
-    if (!initialPoints || typeof initialPoints !== 'number' || initialPoints <= 0) {
+    if (typeof initialPoints !== 'number' || initialPoints <= 0) {
       return res.status(400).json({ error: 'Valid initial points is required' });
     }
 
@@ -365,7 +442,7 @@ app.post('/api/admin/sessions/start', authenticateAdmin, async (req: AuthRequest
       .from('sessions')
       .insert({
         start_time: new Date().toISOString(),
-        duration_seconds: duration * 60, // Convert minutes to seconds
+        duration_seconds: duration * 60, // Convert minutes to seconds (0 = no limit)
         status: 'active',
         categories: categoryStr,
         validation_code: validationCode,
@@ -471,6 +548,144 @@ app.get('/api/admin/sessions', authenticateAdmin, async (_req: AuthRequest, res:
   } catch (error) {
     console.error('Admin get sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get current active sessions (public version - no sensitive data)
+app.get('/api/session/active', async (_req: Request, res: Response) => {
+  try {
+    // Get active non-libre session
+    const { data: activeSession, error: activeError } = await supabase
+      .from('sessions')
+      .select('id, start_time, duration_seconds, status, categories, groups, initial_points')
+      .eq('status', 'active')
+      .neq('groups', 'Libre')
+      .order('start_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Get active libre session
+    const { data: libreSession, error: libreError } = await supabase
+      .from('sessions')
+      .select('id, start_time, duration_seconds, status, categories, groups, initial_points')
+      .eq('status', 'active')
+      .eq('groups', 'Libre')
+      .maybeSingle();
+
+    if (activeError) {
+      console.error('Error fetching active session:', activeError);
+      return res.status(500).json({ error: 'Failed to fetch active session' });
+    }
+
+    if (libreError) {
+      console.error('Error fetching libre session:', libreError);
+      return res.status(500).json({ error: 'Failed to fetch libre session' });
+    }
+
+    res.json({
+      activeSession: activeSession || null,
+      libreSession: libreSession || null
+    });
+  } catch (error) {
+    console.error('Public get sessions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Access code helpers -------------------------------------------------
+// Codes are stored as comma-separated strings in sessions.validation_code and
+// sessions.unlimited_codes. Validating them server-side is what lets the public
+// endpoints stay code-free: the browser never receives a list of valid codes,
+// it only submits one and gets a verdict.
+
+const parseCodeList = (value: unknown): string[] =>
+  typeof value === 'string'
+    ? value.split(',').map((c) => c.trim()).filter(Boolean)
+    : [];
+
+type AccessMode = 'normal' | 'unlimited';
+
+// Find which active session an access code belongs to.
+// Unlimited codes open the Libre session and grant infinite lives;
+// validation codes open a standard session with a limited number of lives.
+const findSessionByCode = async (
+  rawCode: string
+): Promise<{ session: any; mode: AccessMode } | null> => {
+  const normalized = String(rawCode ?? '').trim().toUpperCase();
+  if (!normalized) return null;
+
+  const { data: sessions, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('Error looking up session by code:', error);
+    return null;
+  }
+  if (!sessions) return null;
+
+  // Unlimited codes take precedence: they are the only way into a Libre session.
+  for (const session of sessions) {
+    if (parseCodeList(session.unlimited_codes).some((c) => c.toUpperCase() === normalized)) {
+      return { session, mode: 'unlimited' };
+    }
+  }
+  for (const session of sessions) {
+    if (parseCodeList(session.validation_code).some((c) => c.toUpperCase() === normalized)) {
+      return { session, mode: 'normal' };
+    }
+  }
+  return null;
+};
+
+// NOTE: codes are intentionally NOT single-use. The schema has nowhere to
+// record a spent code, and consuming one would lock a player out of their own
+// session as soon as they reloaded the page (the client re-submits its code).
+// The gate that matters is that validation happens here, server-side, instead
+// of in the browser - which is what stops a code list from leaking.
+
+// Validate an access code without revealing any other code.
+// Used by the player entry screen to know which session a code opens.
+app.post('/api/session/validate-code', async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ valid: false, error: 'Code is required' });
+    }
+
+    const match = await findSessionByCode(code);
+
+    if (!match) {
+      return res.status(200).json({ valid: false, error: 'Code invalide' });
+    }
+
+    const durationSeconds = match.session.duration_seconds || 0;
+    const elapsedSeconds = match.session.start_time
+      ? (Date.now() - new Date(match.session.start_time).getTime()) / 1000
+      : 0;
+    const isExpired = durationSeconds > 0 && elapsedSeconds > durationSeconds;
+
+    if (isExpired) {
+      return res.status(200).json({ valid: false, error: 'La session est terminée' });
+    }
+
+    // Deliberately returns no codes - only what the client needs to proceed.
+    res.json({
+      valid: true,
+      sessionId: match.session.id,
+      mode: match.mode,
+      unlimitedLives: match.mode === 'unlimited',
+      categories: match.session.categories || '',
+      groups: match.session.groups || '',
+      initialPoints: match.session.initial_points || 3,
+      durationSeconds,
+      startTime: match.session.start_time
+    });
+  } catch (error) {
+    console.error('Validate code error:', error);
+    res.status(500).json({ valid: false, error: 'Internal server error' });
   }
 });
 
@@ -597,55 +812,60 @@ app.post('/api/admin/players/delete-all', authenticateAdmin, async (req: AuthReq
 // PLAYER AUTHENTICATION ENDPOINTS
 
 // Player login/validation endpoint
-app.post('/api/player/login', async (req: AuthRequest, res: Response) => {
+app.post('/api/player/login', playerLoginLimiter, async (req: AuthRequest, res: Response) => {
   try {
-    const { sessionId, playerName } = req.body;
-
-    // Validate required fields
-    if (!sessionId || typeof sessionId !== 'string') {
-      return res.status(400).json({ error: 'Session ID is required' });
-    }
+    const { sessionId, playerName, groupName, code } = req.body;
 
     if (!playerName || typeof playerName !== 'string' || playerName.trim().length < 2) {
       return res.status(400).json({ error: 'Valid player name is required (minimum 2 characters)' });
     }
 
-    const trimmedName = playerName.trim();
-
-    // Verify session exists and is active
-    const { data: session, error: sessionError } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single();
-
-    if (sessionError || !session) {
-      return res.status(404).json({ error: 'Session not found' });
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Access code is required' });
     }
 
-    if (session.status !== 'active') {
-      return res.status(400).json({ error: 'Session is not active' });
+    const trimmedName = playerName.trim();
+    const validatedGroupName = groupName || null; // Ensure groupName is null if not provided
+
+    // The access code is the authority on which session the player joins -
+    // the sessionId sent by the browser is only a hint and is never trusted.
+    const match = await findSessionByCode(code);
+
+    if (!match) {
+      return res.status(403).json({ error: 'Code invalide ou session terminée' });
+    }
+
+    const session = match.session;
+    const unlimitedLives = match.mode === 'unlimited';
+
+    if (sessionId && sessionId !== session.id) {
+      return res.status(409).json({ error: 'Ce code appartient à une autre session' });
     }
 
     // Check if player already exists for this session and name
     const { data: existingPlayer, error: playerError } = await supabase
       .from('players')
       .select('*')
-      .eq('session_id', sessionId)
+      .eq('session_id', session.id)
       .eq('name', trimmedName)
       .maybeSingle();
+
+    if (playerError) {
+      console.error('Error looking up player:', playerError);
+      return res.status(500).json({ error: 'Failed to look up player' });
+    }
 
     let playerData;
     let isNewPlayer = false;
 
     if (existingPlayer) {
-      // Player exists - update their last_seen time and return existing data
+      // Player exists - update their group if provided.
+      // NOTE: `players` has no `last_seen` column in the project schema, and
+      // writing one made this whole request fail with a 500.
       const { data: updatedPlayer, error: updateError } = await supabase
         .from('players')
         .update({
-          last_seen: new Date().toISOString(),
-          // Preserve existing points and group unless they were explicitly changing groups
-          // For now, we'll keep existing group but could be enhanced to allow group changes
+          group_name: validatedGroupName !== null ? validatedGroupName : existingPlayer.group_name
         })
         .eq('id', existingPlayer.id)
         .select()
@@ -658,17 +878,18 @@ app.post('/api/player/login', async (req: AuthRequest, res: Response) => {
 
       playerData = updatedPlayer;
     } else {
-      // New player - create record
+      // New player - create record.
+      // Unlimited (Libre) codes start the player with -1 lives, which every
+      // display treats as the infinite-lives sentinel.
       const { data: newPlayer, error: createError } = await supabase
         .from('players')
         .insert({
-          session_id: sessionId,
+          session_id: session.id,
           name: trimmedName,
-          group_name: null, // Will be set when they select a group in the frontend
-          individual_points: session.initial_points || 3,
+          group_name: validatedGroupName,
+          individual_points: unlimitedLives ? -1 : (session.initial_points || 3),
           group_score: 0,
-          started_at: new Date().toISOString(),
-          last_seen: new Date().toISOString()
+          started_at: new Date().toISOString()
         })
         .select()
         .single();
@@ -699,7 +920,8 @@ app.post('/api/player/login', async (req: AuthRequest, res: Response) => {
     res.cookie(playerSessionName, playerToken, {
       httpOnly: true,
       secure: secureCookies, // Only send over HTTPS in production
-      sameSite: 'strict',
+      sameSite: secureCookies ? 'none' : 'lax',
+      path: '/',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
     });
 
@@ -713,6 +935,8 @@ app.post('/api/player/login', async (req: AuthRequest, res: Response) => {
         individualPoints: playerData.individual_points,
         groupScore: playerData.group_score
       },
+      unlimitedLives,
+      categories: session.categories || '',
       expiresIn: 24 * 60 * 60 // 24 hours in seconds
     });
   } catch (error) {
@@ -726,7 +950,8 @@ app.post('/api/player/logout', authenticatePlayer, (_req: Request, res: Response
   res.clearCookie(playerSessionName, {
     httpOnly: true,
     secure: secureCookies,
-    sameSite: 'strict'
+    sameSite: secureCookies ? 'none' : 'lax',
+    path: '/'
   });
 
   res.json({ message: 'Logged out successfully' });
@@ -786,15 +1011,17 @@ app.post('/api/player/answer', authenticatePlayer, async (req: AuthRequest, res:
     const validation = validateAnswer(questionIndex, selectedOption);
     const isCorrect = validation.isCorrect;
 
-    // Insert the answer
+    // Insert the answer.
+    // The schema names this timestamp `created_at`; the previous code wrote
+    // `answered_at`, which does not exist, so every submission failed with a
+    // 500 and no answer was ever recorded.
     const { data: answerData, error: answerError } = await supabase
       .from('answers')
       .insert({
         player_id: playerId,
         question_index: questionIndex,
         selected_option: selectedOption,
-        is_correct: isCorrect,
-        answered_at: new Date().toISOString()
+        is_correct: isCorrect
       })
       .select()
       .single();
@@ -804,56 +1031,62 @@ app.post('/api/player/answer', authenticatePlayer, async (req: AuthRequest, res:
       return res.status(500).json({ error: 'Failed to submit answer' });
     }
 
-    // Calculate consecutive correct answers for life bonus
+    // Count the consecutive-correct streak *before* this answer.
+    // The streak query used to include the answer we had just inserted and
+    // then added 1 on top, so the life bonus fired one answer too early.
     let consecutiveCorrectCount = 0;
     if (isCorrect) {
-      // Get recent answers to calculate consecutive correct streak
-      const { data: recentAnswers, error: recentAnswersError } = await supabase
+      const { data: previousAnswers, error: previousAnswersError } = await supabase
         .from('answers')
-        .select('is_correct, answered_at')
+        .select('is_correct')
         .eq('player_id', playerId)
-        .order('answered_at', { ascending: false })
-        .limit(10); // Look at last 10 answers to be safe
+        .neq('id', answerData.id) // exclude the answer just recorded
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-      if (!recentAnswersError && recentAnswers) {
-        // Count consecutive correct answers from most recent
-        for (const answer of recentAnswers) {
+      if (previousAnswersError) {
+        console.error('Error reading answer streak:', previousAnswersError);
+      } else if (previousAnswers) {
+        for (const answer of previousAnswers) {
           if (answer.is_correct) {
             consecutiveCorrectCount++;
           } else {
-            break; // Stop at first incorrect answer
+            break; // stop at the first incorrect answer
           }
         }
       }
     }
 
-    // Update player score if correct
-    let newIndividualPoints = player.individual_points;
-    let newGroupScore = player.group_score;
+    // Scoring rules:
+    //   correct answer        -> +10 points
+    //   incorrect answer      -> -1 life
+    //   3 correct in a row    -> +1 life (bonus)
+    //   lives reaching 0      -> eliminated
+    // `individual_points` holds the LIVES (it starts at initial_points, and
+    // every display renders it as a life counter), while `group_score` holds
+    // the SCORE. The previous code added the +10 to the life counter and never
+    // touched group_score, which is why every leaderboard showed 0.
+    const unlimitedLives = player.individual_points === -1;
+    let newLives = player.individual_points;
+    let newGroupScore = player.group_score || 0;
 
     if (isCorrect) {
-      // Add points for correct answer
-      newIndividualPoints += 10; // POINTS_PER_QUESTION
+      newGroupScore += 10; // POINTS_PER_QUESTION
 
-      // Add life bonus for every 3 consecutive correct answers
-      // consecutiveCorrectCount is the count of previous consecutive correct answers
-      // So we add 1 for the current answer to get the total streak including this answer
       const totalConsecutiveCorrect = consecutiveCorrectCount + 1;
-      if (totalConsecutiveCorrect % 3 === 0) {
-        newIndividualPoints += 1; // Life bonus
+      if (totalConsecutiveCorrect % 3 === 0 && !unlimitedLives) {
+        newLives += 1; // life bonus for three correct answers in a row
       }
-    } else {
-      // Subtract a life for incorrect answer
-      newIndividualPoints = Math.max(0, newIndividualPoints - 1);
+    } else if (!unlimitedLives) {
+      newLives = Math.max(0, newLives - 1);
     }
 
     // Update player record
     const { data: updatedPlayer, error: updateError } = await supabase
       .from('players')
       .update({
-        individual_points: newIndividualPoints,
-        group_score: newGroupScore,
-        last_seen: new Date().toISOString()
+        individual_points: newLives,
+        group_score: newGroupScore
       })
       .eq('id', playerId)
       .select()
@@ -871,12 +1104,14 @@ app.post('/api/player/answer', authenticatePlayer, async (req: AuthRequest, res:
         questionIndex: answerData.question_index,
         selectedOption: answerData.selected_option,
         isCorrect: answerData.is_correct,
-        answeredAt: answerData.answered_at
+        correctIndex: validation.correctIndex, // revealed only after answering
+        answeredAt: answerData.created_at
       },
       player: {
         id: updatedPlayer.id,
         individualPoints: updatedPlayer.individual_points,
-        groupScore: updatedPlayer.group_score
+        groupScore: updatedPlayer.group_score,
+        eliminated: updatedPlayer.individual_points === 0
       }
     });
   } catch (error) {
@@ -907,16 +1142,14 @@ app.get('/api/player/state', authenticatePlayer, async (_req: AuthRequest, res: 
       return res.status(404).json({ error: 'Player not found' });
     }
 
-    // Get answered questions count
+    // Get answered questions
     const { data: answers, error: answersError } = await supabase
       .from('answers')
       .select('question_index')
       .eq('player_id', playerId);
 
-    let answeredCount = 0;
-    if (!answersError && answers) {
-      answeredCount = answers.length;
-    }
+    const answeredQuestionIndices = answersError || !answers ? [] : answers.map((answer: any) => answer.question_index);
+    const answeredCount = answeredQuestionIndices.length;
 
     res.json({
       player: {
@@ -926,11 +1159,13 @@ app.get('/api/player/state', authenticatePlayer, async (_req: AuthRequest, res: 
         groupName: player.group_name || null,
         individualPoints: player.individual_points,
         groupScore: player.group_score,
-        startedAt: player.started_at,
-        lastSeen: player.last_seen
+        unlimitedLives: player.individual_points === -1,
+        eliminated: player.individual_points === 0,
+        startedAt: player.started_at
       },
       stats: {
-        answeredQuestions: answeredCount
+        answeredQuestions: answeredCount,
+        answeredQuestionIndices: answeredQuestionIndices
       }
     });
   } catch (error) {
@@ -985,17 +1220,6 @@ app.get('/api/player/questions', authenticatePlayer, async (_req: AuthRequest, r
   }
 });
 
-// Error handling middleware
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-// 404 handler
-app.use('*', (_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
 // Finish game endpoint
 app.post('/api/player/finish', authenticatePlayer, async (_req: AuthRequest, res: Response) => {
   try {
@@ -1038,6 +1262,22 @@ app.post('/api/player/finish', authenticatePlayer, async (_req: AuthRequest, res
     console.error('Player finish error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Error handling middleware
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  // CORS rejections surface here; answer with 403 rather than a blanket 500.
+  if (err.message && err.message.startsWith('Origine non autorisee par CORS')) {
+    return res.status(403).json({ error: err.message });
+  }
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// 404 handler - MUST stay last, otherwise it swallows every route registered
+// after it (which is how /api/player/finish became unreachable).
+app.use('*', (_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
 app.listen(PORT, () => {

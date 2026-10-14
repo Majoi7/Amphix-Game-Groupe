@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from './lib/supabase';
-import { ALL_QUESTIONS } from './data/questions';
 import confetti from 'canvas-confetti';
-import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
+// `motion/react` rather than `framer-motion`: framer-motion is only a
+// transitive dependency of `motion`, so importing it directly would break the
+// build if that transitive dependency ever disappeared.
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'motion/react';
 import { Trophy, Clock, Target, Check, X, Share2, LogOut, Settings, Sparkles, Zap, Heart, Star, Flame } from 'lucide-react';
 import AdminScreen from './components/AdminScreen';
 import LiveRankingScreen from './components/LiveRankingScreen';
 
-const ADMIN_PASSWORD = 'elite';
-export const POINTS_PER_QUESTION = 10; // Changez ceci à 10 si vous souhaitez donner 10 points par question
+export const POINTS_PER_QUESTION = 10; // Score per correct answer (the server applies the same value)
 
 // --- CUSTOM HOOKS ---
 const useCountUp = (target: number, duration = 1500) => {
@@ -287,11 +288,121 @@ export const parseSafeDate = (d: string) => {
   return new Date(s);
 };
 
+// Public session lookup - used by the player entry screen.
+// Deliberately returns no access codes.
+const getActiveSessions = async (): Promise<{ activeSession: any; libreSession: any }> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/session/active`, {
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
+
+// Admin session lookup - authenticated, and the only place codes come from.
+// The admin panel needs them to show and manage code lists, but the public
+// endpoint must never carry them.
+const getAdminSessions = async (): Promise<{ activeSession: any; libreSession: any }> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions`, {
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
+
+const updateValidationCode = async (sessionId: string, validationCode: string): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-validation-code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ sessionId, validationCode })
+  });
+  return response;
+};
+
+const updateUnlimitedCodes = async (sessionId: string, unlimitedCodes: string): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-unlimited-codes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ sessionId, unlimitedCodes })
+  });
+  return response;
+};
+
+const updateSessionGroups = async (sessionId: string, groups: string[]): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-groups`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ sessionId, groups })
+  });
+  return response;
+};
+
+const startSession = async (duration: number, categories: string[], validationCode: string, unlimitedCodes: string, groups: string[], initialPoints: number): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/start`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ duration, categories, validationCode, unlimitedCodes, groups, initialPoints })
+  });
+  return response;
+};
+
+const stopSession = async (sessionId: string): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/stop`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ sessionId })
+  });
+  return response;
+};
+
+const deletePlayer = async (playerId: string): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/players/delete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ playerId })
+  });
+  return response;
+};
+
+const deleteAllPlayers = async (sessionId: string): Promise<Response> => {
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/players/delete-all`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ sessionId })
+  });
+  return response;
+};
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentScreen, setCurrentScreen] = useState('entry');
   const [showLiveModal, setShowLiveModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ msg: string; isError: boolean } | null>(null);
+  const [isValidated, setIsValidated] = useState(false);
 
   const [session, setSession] = useState<any>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -299,19 +410,44 @@ export default function App() {
   const [nameInput, setNameInput] = useState('');
 
   useEffect(() => {
-    const handleHash = () => {
+    const handleHash = async () => {
       if (window.location.hash === '#/admin') {
         const pwd = prompt('Mot de passe admin (elite):');
-        if (pwd === ADMIN_PASSWORD) {
+        if (!pwd) {
+          window.location.hash = '#/';
+          return;
+        }
+
+        try {
+          const loginResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ password: pwd })
+          });
+
+          if (!loginResponse.ok) {
+            const errorData = await loginResponse.json();
+            showToast(`❌ ${errorData.error || 'Mot de passe incorrect'}`, true);
+            window.location.hash = '#/';
+            return;
+          }
+
           setCurrentScreen('admin');
-        } else {
-          showToast('Accès refusé', true);
+          setIsValidated(true);
+        } catch (error) {
+          console.error('Admin login error:', error);
+          showToast('Erreur de connexion au serveur', true);
           window.location.hash = '#/';
         }
       } else if (window.location.hash.startsWith('#/live-ranking')) {
         setCurrentScreen('live');
+        setIsValidated(false);
       } else {
         setCurrentScreen('entry');
+        setIsValidated(false);
       }
     };
     if (!showSplash) {
@@ -327,17 +463,13 @@ export default function App() {
   }, []);
 
   const getActiveSession = async () => {
-    const { data, error } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('status', 'active')
-      .neq('groups', 'Libre')
-      .order('start_time', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-      
-    if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    try {
+      const { activeSession } = await getActiveSessions();
+      return activeSession;
+    } catch (error) {
+      console.error('Error fetching active session:', error);
+      return null;
+    }
   };
 
   const [audioStarted, setAudioStarted] = useState(false);
@@ -609,7 +741,20 @@ export default function App() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <AdminScreen getActiveSession={getActiveSession} showToast={showToast} sounds={sounds} />
+              <AdminScreen
+                getActiveSession={getActiveSession}
+                getActiveSessions={getAdminSessions}
+                updateValidationCode={updateValidationCode}
+                updateUnlimitedCodes={updateUnlimitedCodes}
+                updateSessionGroups={updateSessionGroups}
+                startSession={startSession}
+                stopSession={stopSession}
+                deletePlayer={deletePlayer}
+                deleteAllPlayers={deleteAllPlayers}
+                showToast={showToast}
+                sounds={sounds}
+                isValidated={isValidated}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -668,12 +813,22 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
   // BUT we don't have access to the latest state of isValidated. 
   // Let's use a ref.
   const isValidatedRef = useRef(false);
+  const isLoadingRef = useRef(false);
   useEffect(() => {
     isValidatedRef.current = isValidated;
   }, [isValidated]);
 
   const loadSession = async () => {
-    if (isValidatedRef.current) return;
+    // Prevent concurrent calls
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoading(true);
+
+    if (isValidatedRef.current) {
+      isLoadingRef.current = false;
+      setLoading(false);
+      return;
+    }
     try {
       const s = await getActiveSession();
       setSession(s);
@@ -691,61 +846,55 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
       }
     } catch (e) {
       setStatusText('Erreur de connexion');
+    } finally {
+      isLoadingRef.current = false;
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleValidateCode = async () => {
     sounds?.prime?.();
     const inputCode = validationInput.trim().toUpperCase();
     if (!inputCode) return;
-    
+
     setLoading(true);
-    let matchedSession = null;
-
     try {
-      if (session && session.status === 'active') {
-        const { data: currentSession } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('id', session.id)
-          .single();
-        if (currentSession) {
-          const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          const unlimitedCodes = currentSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          
-          if (validCodes.includes(inputCode) || unlimitedCodes.includes(inputCode)) {
-            matchedSession = currentSession;
-          }
-        }
-      }
+      // Validation happens server-side. The browser never receives the list of
+      // valid codes - it submits one and gets a verdict plus the identity of
+      // the session that code opens. The previous version asked the public
+      // endpoint for the codes, which never returns them, so every code was
+      // rejected and nobody could enter a game.
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/session/validate-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ code: inputCode })
+      });
 
-      if (!matchedSession) {
-        const { data: libreSession } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('status', 'active')
-          .eq('groups', 'Libre')
-          .maybeSingle();
-          
-        if (libreSession) {
-          const validCodes = libreSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          const unlimitedCodes = libreSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          if (validCodes.includes(inputCode) || unlimitedCodes.includes(inputCode)) {
-            matchedSession = libreSession;
-          }
-        }
-      }
+      const data = await response.json().catch(() => ({ valid: false }));
 
-      if (matchedSession) {
-        setSession(matchedSession);
-        setIsValidated(true);
-        showToast('✅ Code valide !');
-      } else {
+      if (!response.ok || !data.valid) {
         setShake(true);
         setTimeout(() => setShake(false), 500);
-        showToast('❌ Code invalide', true);
+        showToast(`❌ ${data.error || 'Code invalide'}`, true);
+        setLoading(false);
+        return;
       }
+
+      // Reshaped into the session object the rest of the app expects.
+      setSession({
+        id: data.sessionId,
+        status: 'active',
+        categories: data.categories,
+        groups: data.groups,
+        initial_points: data.initialPoints,
+        duration_seconds: data.durationSeconds,
+        start_time: data.startTime,
+      });
+      setIsValidated(true);
+      showToast('✅ Code valide !');
     } catch (e) {
       showToast('❌ Erreur de vérification', true);
     }
@@ -759,72 +908,34 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 
     setLoading(true);
     try {
-      let isUnlimitedUsed = false;
-      if (session.validation_code || session.unlimited_codes) {
-        const { data: currentSession } = await supabase
-          .from('sessions')
-          .select('validation_code, unlimited_codes')
-          .eq('id', session.id)
-          .single();
-        if (currentSession) {
-          const inputCode = validationInput.trim().toUpperCase();
-          const validCodes = currentSession.validation_code?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          const unlimitedCodes = currentSession.unlimited_codes?.split(',').map((c: string) => c.trim().toUpperCase()).filter(Boolean) || [];
-          
-          if (unlimitedCodes.includes(inputCode)) {
-            isUnlimitedUsed = true;
-          } else if (validCodes.includes(inputCode)) {
-            const remainingCodes = validCodes.filter((c: string) => c !== inputCode).join(', ');
-            await supabase.from('sessions').update({ validation_code: remainingCodes }).eq('id', session.id);
-          } else {
-            showToast('❌ Ce code a déjà été utilisé ou est invalide.', true);
-            setLoading(false);
-            setIsValidated(false);
-            return;
-          }
-        }
+      // The code is validated again server-side at login, which is what really
+      // decides the session and whether the player starts with infinite lives.
+      // Nothing is consumed client-side any more: the old code removed the code
+      // from the session via an admin-only endpoint, so the first player to
+      // join broke the session for everyone else.
+      const loginResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          sessionId: session.id,
+          playerName: nameInput.trim(),
+          groupName: selectedGroup || null,
+          code: validationInput.trim()
+        })
+      });
+
+      if (!loginResponse.ok) {
+        const errorData = await loginResponse.json().catch(() => ({}));
+        showToast(`❌ ${errorData.error || 'Erreur lors du lancement'}`, true);
+        setLoading(false);
+        return;
       }
 
-      let playerData;
-      const { data: existing } = await supabase
-        .from('players')
-        .select('*')
-        .eq('session_id', session.id)
-        .eq('name', nameInput.trim())
-        .maybeSingle();
-
-      if (existing) {
-        let newLives = isUnlimitedUsed ? 1000 : (session.initial_points || 3);
-        if (existing.individual_points !== 1000) {
-           newLives = isUnlimitedUsed ? 1000 : Math.max(existing.individual_points || 0, session.initial_points || 3);
-        }
-
-        const { data: updatedPlayer } = await supabase
-          .from('players')
-          .update({
-            individual_points: newLives,
-            group_name: selectedGroup || existing.group_name || null
-          })
-          .eq('id', existing.id)
-          .select()
-          .single();
-        playerData = updatedPlayer || existing;
-      } else {
-        const { data, error } = await supabase
-          .from('players')
-          .insert({
-            session_id: session.id,
-            name: nameInput.trim(),
-            group_name: selectedGroup || null,
-            individual_points: isUnlimitedUsed ? 1000 : (session.initial_points || 3),
-            group_score: 0,
-            started_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-        if (error) throw error;
-        playerData = data;
-      }
+      const loginData = await loginResponse.json();
+      const playerData = loginData.player;
       onStart(playerData.id, playerData.name, session, playerData.group_score, playerData.individual_points);
     } catch (e) {
       showToast('Erreur lors du lancement', true);
@@ -1041,8 +1152,11 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
   const [currentIdx, setCurrentIdx] = useState(0);
 
   const [score, setScore] = useState(0);
-  const [individualPoints, setIndividualPoints] = useState(session?.initial_points || 3);
-  const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
+  // `individualPoints` is the LIFE counter (it starts at the session's
+  // initial_points, and the server sets it to -1 for infinite lives).
+  const [individualPoints, setIndividualPoints] = useState<number>(session?.initial_points ?? 3);
+  const [revealedCorrectIndex, setRevealedCorrectIndex] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const scoreRef = useRef(0);
   const pointsRef = useRef(individualPoints);
@@ -1056,21 +1170,32 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
 
   useEffect(() => {
     const fetchPlayerData = async () => {
-      const { data } = await supabase.from('players').select('group_score, individual_points').eq('id', playerId).single();
-      if (data) {
-        setScore(data.group_score || 0);
-        setIndividualPoints(data.individual_points || 0);
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/me`, {
+          credentials: 'include' // Important for sending cookies with the request
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.player) {
+          setScore(data.player.group_score ?? 0);
+          // -1 is the infinite-lives sentinel, so `??` (not `||`) is required.
+          setIndividualPoints(data.player.individual_points ?? 0);
+        }
+      } catch (error) {
+        console.error('Error fetching player data:', error);
       }
     };
     fetchPlayerData();
-    
+
     // Subscribe to player updates (in case they play on multiple devices)
     const playerChannel = supabase.channel(`public:players:${playerId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `id=eq.${playerId}` }, (payload) => {
         const p = payload.new;
         if (p) {
-          setScore(p.group_score || 0);
-          setIndividualPoints(p.individual_points || 0);
+          setScore(p.group_score ?? 0);
+          setIndividualPoints(p.individual_points ?? 0);
         }
       })
       .subscribe();
@@ -1081,37 +1206,46 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
   }, [playerId]);
 
   useEffect(() => {
-    const activeCats = session?.categories ? session.categories.split(',').map((c: string) => c.trim()) : [];
-    let filtered = ALL_QUESTIONS;
-    if (activeCats.length > 0) {
-      filtered = ALL_QUESTIONS.filter((q) => activeCats.includes(q.category));
-    }
-    
-    const fetchAndFilter = async () => {
+    // Questions come from the server already sanitized (no correct answer) and
+    // already filtered to the session categories. The previous version filtered
+    // the bundled ALL_QUESTIONS client-side, which meant the answers were
+    // shipped to every browser and the server-side endpoint was never used.
+    const loadQuestions = async () => {
       try {
-        const { data } = await supabase.from('answers').select('question_index').eq('player_id', playerId);
-        if (data && data.length > 0) {
-          const answeredIds = data.map((d: any) => d.question_index);
-          const remaining = filtered.filter((q: any) => !answeredIds.includes(q.id));
-          if (remaining.length > 0) {
-            filtered = remaining;
+        const [questionsRes, stateRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/questions`, {
+            credentials: 'include'
+          }),
+          fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/state`, {
+            credentials: 'include'
+          })
+        ]);
+
+        if (!questionsRes.ok) {
+          throw new Error(`HTTP error! status: ${questionsRes.status}`);
+        }
+
+        const questionsData = await questionsRes.json();
+        let available: any[] = questionsData.questions || [];
+
+        if (stateRes.ok) {
+          const stateData = await stateRes.json();
+          const answeredIds: number[] = stateData.stats?.answeredQuestionIndices || [];
+          if (answeredIds.length > 0) {
+            const remaining = available.filter((q: any) => !answeredIds.includes(q.id));
+            // Only honour the filter if it leaves something to play.
+            if (remaining.length > 0) available = remaining;
           }
         }
-      } catch(e) {}
-      
-      if (filtered.length === 0) {
-        filtered = ALL_QUESTIONS;
+
+        setQuestions(available);
+      } catch (e) {
+        console.error('Error loading questions:', e);
+        showToast('❌ Impossible de charger les questions', true);
       }
-      
-      const shuf = [...filtered];
-      for (let i = shuf.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuf[i], shuf[j]] = [shuf[j], shuf[i]];
-      }
-      setQuestions(shuf);
     };
 
-    fetchAndFilter();
+    loadQuestions();
   }, []); // Run only once to avoid reshuffling during the game
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -1124,8 +1258,17 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
   const finishGame = useCallback(
     async (forced = false, eliminated = false) => {
       try {
-        await supabase.from('players').update({ finished_at: new Date().toISOString() }).eq('id', playerId);
-      } catch (e) {}
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/finish`, {
+          method: 'POST',
+          credentials: 'include' // Important for sending cookies with the request
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+      } catch (e) {
+        console.error('Error finishing game:', e);
+      }
 
       if (eliminated) {
         showToast('💀 Vous êtes éliminé !');
@@ -1165,15 +1308,28 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
 
     const checkStatus = async () => {
       try {
-        const { data } = await supabase.from('sessions').select('*').eq('id', session.id).maybeSingle();
-        if (data) {
-          setLocalSession(data);
-          if (data.status !== 'active') {
-            finishGame(false);
-            showToast("L'administrateur a arrêté la partie.", true);
-          }
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/state`, {
+          credentials: 'include' // Important for sending cookies with the request
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      } catch (e) {}
+        const data = await response.json();
+        if (data.player) {
+          // Merge instead of replace: /api/player/state returns player data
+          // only, so replacing localSession dropped start_time and
+          // duration_seconds and the countdown rendered "NaN:NaN".
+          // Returning the same reference when nothing changed keeps this poll
+          // from re-triggering the effect (and its intervals) every 30s.
+          setLocalSession((prev: any) =>
+            prev?.status === 'active' ? prev : { ...prev, status: 'active' }
+          );
+          // The endpoint does not return session data, so the authoritative
+          // session status still comes from the Realtime subscription below.
+        }
+      } catch (e) {
+        console.error('Error checking session status:', e);
+      }
     };
 
     const channel = supabase.channel('public:quiz')
@@ -1195,50 +1351,73 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
   };
 
   const handleCheck = async () => {
-    if (answered || selectedOpt === null) return;
-    setAnswered(true);
+    if (answered || selectedOpt === null || submitting) return;
+    setSubmitting(true);
 
-    const isCorrect = selectedOpt === questions[currentIdx].correctIndex;
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/answer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important for sending cookies with the request
+        body: JSON.stringify({
+          questionIndex: questions[currentIdx].id,
+          selectedOption: selectedOpt
+        })
+      });
 
-    let newConsecutive = isCorrect ? consecutiveCorrect + 1 : 0;
-    let newIndividualPoints = individualPoints;
-    let newScore = score;
+      if (response.status === 409) {
+        // Already recorded (e.g. double submission) - let the player move on.
+        setAnswered(true);
+        setSubmitting(false);
+        return;
+      }
 
-    if (isCorrect) {
-      newScore += POINTS_PER_QUESTION;
-      if (newConsecutive === 3) {
-        newIndividualPoints += 1;
-        newConsecutive = 0;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // The server is the single source of truth for correctness, for the
+      // revealed answer, and for the resulting score and lives. The client no
+      // longer computes any of it, which is what makes the score trustworthy.
+      const isCorrect = Boolean(result.answer?.isCorrect);
+      const previousLives = individualPoints;
+      const newLives = result.player?.individualPoints ?? previousLives;
+      const newScore = result.player?.groupScore ?? score;
+
+      setRevealedCorrectIndex(
+        typeof result.answer?.correctIndex === 'number' ? result.answer.correctIndex : null
+      );
+      setScore(newScore);
+      setIndividualPoints(newLives);
+      setAnswered(true);
+
+      isCorrect ? sounds.correct() : sounds.wrong();
+
+      if (isCorrect && newLives > previousLives) {
+        // The server awarded the +1 life bonus for three correct in a row.
         setShowLifeAnimation(true);
         sounds.lifeUp();
         showToast('🔥 +1 Vie !', false);
         setTimeout(() => setShowLifeAnimation(false), 1500);
+      } else if (!isCorrect && newLives < previousLives) {
+        setShowLifeLossAnimation(true);
+        setTimeout(() => setShowLifeLossAnimation(false), 500);
       }
-    } else {
-      newIndividualPoints = Math.max(0, newIndividualPoints - 1);
-      setShowLifeLossAnimation(true);
-      setTimeout(() => setShowLifeLossAnimation(false), 500);
+
+      setAnswersLog((prev) => [...prev, { q: questions[currentIdx].id, isCorrect }]);
+    } catch (e) {
+      // The answer was not recorded, so stay on the question and let the
+      // player retry instead of silently losing their answer.
+      console.error('Error submitting answer:', e);
+      showToast('❌ Réponse non enregistrée, réessayez', true);
+    } finally {
+      setSubmitting(false);
     }
-
-    setConsecutiveCorrect(newConsecutive);
-    setScore(newScore);
-    setIndividualPoints(newIndividualPoints);
-
-    isCorrect ? sounds.correct() : sounds.wrong();
-
-    setAnswersLog((prev) => [...prev, { q: questions[currentIdx].id, isCorrect }]);
-    try {
-      await supabase.from('answers').insert({
-        player_id: playerId,
-        question_index: questions[currentIdx].id,
-        selected_option: selectedOpt,
-        is_correct: isCorrect,
-      });
-      await supabase
-        .from('players')
-        .update({ group_score: newScore, individual_points: newIndividualPoints })
-        .eq('id', playerId);
-    } catch (e) {}
   };
 
   const handleContinue = () => {
@@ -1251,6 +1430,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
       setCurrentIdx((i) => i + 1);
       setAnswered(false);
       setSelectedOpt(null);
+      setRevealedCorrectIndex(null);
     } else {
       finishGame();
     }
@@ -1274,7 +1454,13 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
   const timeStr = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   const isUrgent = localSession?.groups !== 'Libre' && timeLeft && timeLeft <= 60;
   const progressPercent = (currentIdx / questions.length) * 100;
-  const isCorrectAnswer = answered && selectedOpt !== null && selectedOpt === currentQ.correctIndex;
+  // -1 is the infinite-lives sentinel used by the server, the admin panel and
+  // the live ranking. The quiz screen previously used a `>= 990` threshold, so
+  // the player saw "-1" instead of the infinity symbol.
+  const unlimitedLives = individualPoints === -1;
+  // Correctness is revealed by the server after the answer is recorded, so the
+  // highlight never depends on an answer shipped to the browser.
+  const isCorrectAnswer = answered && selectedOpt !== null && selectedOpt === revealedCorrectIndex;
 
   return (
     <motion.div
@@ -1318,7 +1504,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
           className="flex items-center gap-1.5 font-black text-game-red text-xl"
         >
           <Heart className="w-7 h-7 fill-current" />
-          {individualPoints >= 990 ? '∞' : individualPoints}
+          {unlimitedLives ? '∞' : individualPoints}
         </motion.div>
       </div>
 
@@ -1376,7 +1562,7 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
           <AnimatePresence>
             {currentQ.options.map((opt: string, i: number) => {
               const isSelected = selectedOpt === i;
-              const isActuallyCorrect = i === currentQ.correctIndex;
+              const isActuallyCorrect = revealedCorrectIndex !== null && i === revealedCorrectIndex;
 
               let btnStateClass = 'bg-white border-2 border-gray-200 text-gray-700 shadow-sm hover:bg-gray-50 hover:shadow-md hover:border-gray-300';
 
@@ -1494,10 +1680,10 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
           <motion.button
             whileHover={selectedOpt !== null ? { scale: 1.02 } : {}}
             whileTap={selectedOpt !== null ? { scale: 0.98 } : {}}
-            disabled={selectedOpt === null}
+            disabled={selectedOpt === null || submitting}
             onClick={answered ? handleContinue : handleCheck}
             className={`w-full uppercase font-black text-white text-xl py-4 rounded-2xl transition-all shadow-lg ${
-              selectedOpt === null
+              selectedOpt === null || submitting
                 ? 'bg-gray-300 shadow-none cursor-not-allowed'
                 : !answered
                 ? 'bg-game-blue hover:bg-[#1a5bbf] shadow-blue-500/30'
