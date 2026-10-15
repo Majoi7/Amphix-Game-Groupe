@@ -592,6 +592,55 @@ app.get('/api/session/active', async (_req: Request, res: Response) => {
   }
 });
 
+// --- Session expiry -------------------------------------------------------
+// A session is never closed automatically when its countdown runs out: `status`
+// only becomes 'finished' when an admin presses "ARRÊTER MATCH". An expired
+// session therefore stays 'active' in the database and keeps being returned by
+// /api/session/active, sometimes alongside a newer one.
+//
+// The server and the browser both used to decide "is this session over?" on
+// their own, from the same timestamp, with two different parsers - and they
+// disagreed. The verdict is now computed here, once, and shipped to the client
+// as the explicit `is_expired` boolean; the browser never re-derives it.
+
+// Normalise the timestamp formats PostgREST can return ('2026-10-15 09:00:00.123456+00',
+// '...T...Z', ...) into a form every JavaScript engine parses identically.
+// Node accepts a short '+00' offset and a 6-digit fraction through its lenient
+// legacy parser, but a browser switches to strict ISO parsing as soon as the
+// string contains a 'T' - and then rejects both, yielding an Invalid Date.
+// That divergence is exactly what produced "La session est terminée" from the
+// server while the page still displayed "Session active !".
+const parseDbDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  let s = String(value).trim();
+  if (!s) return null;
+
+  s = s.replace(' ', 'T');
+  // Microseconds -> milliseconds.
+  s = s.replace(/(\.\d{3})\d+/, '$1');
+  // '+00' / '-05' -> '+00:00' / '-05:00'.
+  s = s.replace(/([+-]\d{2})$/, '$1:00');
+  // No timezone information at all: timestamps are stored in UTC.
+  if (!/[Zz]$/.test(s) && !/[+-]\d{2}:\d{2}$/.test(s)) s += 'Z';
+
+  const parsed = new Date(s);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// A duration of 0 means "no time limit" (Libre mode), never "expired".
+// An unreadable start_time is never treated as expired either: declaring a
+// session over on the strength of a parse failure is the bug being fixed, so
+// an unknown state is reported as unknown rather than guessed at.
+const isSessionExpired = (session: any): boolean => {
+  const durationSeconds = Number(session?.duration_seconds) || 0;
+  if (durationSeconds <= 0) return false;
+  const startedAt = parseDbDate(session?.start_time);
+  if (!startedAt) return false;
+  return Date.now() - startedAt.getTime() > durationSeconds * 1000;
+};
+
 // --- Access code helpers -------------------------------------------------
 // Codes are stored as comma-separated strings in sessions.validation_code and
 // sessions.unlimited_codes. Validating them server-side is what lets the public
@@ -625,18 +674,28 @@ const findSessionByCode = async (
   }
   if (!sessions) return null;
 
+  // Every session a code matches is collected first, so that the caller can be
+  // told about an expired one instead of being handed an arbitrary winner.
+  const matches: { session: any; mode: AccessMode }[] = [];
+
   // Unlimited codes take precedence: they are the only way into a Libre session.
   for (const session of sessions) {
     if (parseCodeList(session.unlimited_codes).some((c) => c.toUpperCase() === normalized)) {
-      return { session, mode: 'unlimited' };
+      matches.push({ session, mode: 'unlimited' });
     }
   }
   for (const session of sessions) {
     if (parseCodeList(session.validation_code).some((c) => c.toUpperCase() === normalized)) {
-      return { session, mode: 'normal' };
+      matches.push({ session, mode: 'normal' });
     }
   }
-  return null;
+
+  if (matches.length === 0) return null;
+
+  // A code can outlive the session it was printed for. Prefer a match that is
+  // still running, so a live code is never answered by a stale session that is
+  // still sitting in the database with status 'active'.
+  return matches.find((m) => !isSessionExpired(m.session)) ?? matches[0];
 };
 
 // NOTE: codes are intentionally NOT single-use. The schema has nowhere to
@@ -661,19 +720,19 @@ app.post('/api/session/validate-code', async (req: Request, res: Response) => {
       return res.status(200).json({ valid: false, error: 'Code invalide' });
     }
 
-    const durationSeconds = match.session.duration_seconds || 0;
-    const elapsedSeconds = match.session.start_time
-      ? (Date.now() - new Date(match.session.start_time).getTime()) / 1000
-      : 0;
-    const isExpired = durationSeconds > 0 && elapsedSeconds > durationSeconds;
-
-    if (isExpired) {
-      return res.status(200).json({ valid: false, error: 'La session est terminée' });
+    // The code exists but its session has run out of time. This is the only
+    // place allowed to claim a session is over, and `expired: true` lets the
+    // client say so without re-deriving it from dates.
+    if (isSessionExpired(match.session)) {
+      return res.status(200).json({ valid: false, expired: true, error: 'La session est terminée' });
     }
+
+    const durationSeconds = Number(match.session.duration_seconds) || 0;
 
     // Deliberately returns no codes - only what the client needs to proceed.
     res.json({
       valid: true,
+      expired: false,
       sessionId: match.session.id,
       mode: match.mode,
       unlimitedLives: match.mode === 'unlimited',
