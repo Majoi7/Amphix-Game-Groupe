@@ -1,11 +1,12 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { createAdminApi } from './lib/adminApi';
 import { supabase } from './lib/supabase';
 import confetti from 'canvas-confetti';
 // `motion/react` rather than `framer-motion`: framer-motion is only a
 // transitive dependency of `motion`, so importing it directly would break the
 // build if that transitive dependency ever disappeared.
 import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'motion/react';
-import { Trophy, Clock, Target, Check, X, Share2, LogOut, Settings, Sparkles, Zap, Heart, Star, Flame } from 'lucide-react';
+import { Trophy, Clock, Target, Check, X, Share2, LogOut, Settings, Sparkles, Zap, Heart, Star, Flame, Volume1, Volume2 } from 'lucide-react';
 import AdminScreen from './components/AdminScreen';
 import LiveRankingScreen from './components/LiveRankingScreen';
 
@@ -300,103 +301,6 @@ const getActiveSessions = async (): Promise<{ activeSession: any; libreSession: 
   return response.json();
 };
 
-// Admin session lookup - authenticated, and the only place codes come from.
-// The admin panel needs them to show and manage code lists, but the public
-// endpoint must never carry them.
-const getAdminSessions = async (): Promise<{ activeSession: any; libreSession: any }> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions`, {
-    credentials: 'include'
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  return response.json();
-};
-
-const updateValidationCode = async (sessionId: string, validationCode: string): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-validation-code`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ sessionId, validationCode })
-  });
-  return response;
-};
-
-const updateUnlimitedCodes = async (sessionId: string, unlimitedCodes: string): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-unlimited-codes`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ sessionId, unlimitedCodes })
-  });
-  return response;
-};
-
-const updateSessionGroups = async (sessionId: string, groups: string[]): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/update-groups`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ sessionId, groups })
-  });
-  return response;
-};
-
-const startSession = async (duration: number, categories: string[], validationCode: string, unlimitedCodes: string, groups: string[], initialPoints: number): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/start`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ duration, categories, validationCode, unlimitedCodes, groups, initialPoints })
-  });
-  return response;
-};
-
-const stopSession = async (sessionId: string): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/sessions/stop`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ sessionId })
-  });
-  return response;
-};
-
-const deletePlayer = async (playerId: string): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/players/delete`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ playerId })
-  });
-  return response;
-};
-
-const deleteAllPlayers = async (sessionId: string): Promise<Response> => {
-  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/players/delete-all`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ sessionId })
-  });
-  return response;
-};
-
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentScreen, setCurrentScreen] = useState('entry');
@@ -409,37 +313,37 @@ export default function App() {
   const [playerName, setPlayerName] = useState('');
   const [nameInput, setNameInput] = useState('');
 
+  const adminApi = useMemo(() => createAdminApi({
+    baseUrl: import.meta.env.VITE_API_BASE_URL,
+    onUnauthorized: () => {
+      setIsValidated(false);
+      setCurrentScreen('entry');
+      setToastMsg({ msg: 'Session administrateur expirée ou invalide. Reconnectez-vous.', isError: true });
+      setTimeout(() => setToastMsg(null), 3000);
+      window.location.hash = '#/';
+    },
+  }), []);
+
   useEffect(() => {
     const handleHash = async () => {
       if (window.location.hash === '#/admin') {
-        const pwd = prompt('Mot de passe admin (elite):');
+        const pwd = prompt('Mot de passe administrateur :');
         if (!pwd) {
           window.location.hash = '#/';
           return;
         }
 
         try {
-          const loginResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/login`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({ password: pwd })
-          });
-
-          if (!loginResponse.ok) {
-            const errorData = await loginResponse.json();
-            showToast(`❌ ${errorData.error || 'Mot de passe incorrect'}`, true);
-            window.location.hash = '#/';
-            return;
-          }
-
+          setIsValidated(false);
+          await adminApi.login(pwd);
+          // The user may have navigated away while the login request was pending.
+          if (window.location.hash !== '#/admin') return;
           setCurrentScreen('admin');
           setIsValidated(true);
         } catch (error) {
           console.error('Admin login error:', error);
-          showToast('Erreur de connexion au serveur', true);
+          setIsValidated(false);
+          showToast(error instanceof Error ? error.message : 'Erreur de connexion au serveur', true);
           window.location.hash = '#/';
         }
       } else if (window.location.hash.startsWith('#/live-ranking')) {
@@ -455,12 +359,28 @@ export default function App() {
       handleHash();
     }
     return () => window.removeEventListener('hashchange', handleHash);
-  }, [showSplash]);
+  }, [showSplash, adminApi]);
+
+  const [audioStarted, setAudioStarted] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const showToast = useCallback((msg: string, isError = false) => {
     setToastMsg({ msg, isError });
     setTimeout(() => setToastMsg(null), 3000);
   }, []);
+
+  const handleAdminLogout = async () => {
+    // Hide the dashboard and stop polling before waiting for the cookie deletion.
+    setIsValidated(false);
+    setCurrentScreen('entry');
+    window.location.hash = '#/';
+    try {
+      await adminApi.logout();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Erreur de déconnexion au serveur', true);
+    }
+  };
 
   const getActiveSession = async () => {
     try {
@@ -472,8 +392,35 @@ export default function App() {
     }
   };
 
-  const [audioStarted, setAudioStarted] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Attempt to resume audio when user interacts with the page (helps with autoplay restrictions)
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      if (audioBlocked && audioRef.current) {
+        // Try to play audio when user interacts with the page
+        audioRef.current.play().then(() => {
+          setAudioStarted(true);
+          setAudioBlocked(false);
+          // Optional: Show success toast
+          // showToast('🔊 Audio activé grâce à votre interaction', false);
+        }).catch(e => {
+          console.log("Audio still blocked after interaction", e);
+          // Keep blocked state - user will need to click the volume button
+        });
+      }
+    };
+
+    // Listen for user interactions that could unlock audio
+    const events = ['click', 'touchstart', 'keydown'];
+    events.forEach(event => {
+      window.addEventListener(event, handleUserInteraction);
+    });
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, handleUserInteraction);
+      });
+    };
+  }, [audioBlocked, audioRef.current]);
 
   const succesAudio = useRef<HTMLAudioElement | null>(null);
   const termineAudio = useRef<HTMLAudioElement | null>(null);
@@ -485,7 +432,10 @@ export default function App() {
       if (audio) {
         audio.play().then(() => {
           audio.pause();
-        }).catch(() => {});
+          setAudioBlocked(false); // Audio playback succeeded, not blocked
+        }).catch(() => {
+          setAudioBlocked(true); // Audio playback was blocked
+        });
       }
     };
     playAndPause(audioRef.current);
@@ -496,42 +446,75 @@ export default function App() {
 
   useEffect(() => {
     const cacheBuster = `?t=${Date.now()}`;
-    
+
     audioRef.current = new Audio('/Beauty_And_A_Beat.mp3' + cacheBuster);
     audioRef.current.loop = true;
     audioRef.current.volume = 0.3;
 
     succesAudio.current = new Audio('/succes.mp3' + cacheBuster);
     succesAudio.current.volume = 1.0;
-    
+
     termineAudio.current = new Audio('/termine.mp3' + cacheBuster);
     termineAudio.current.volume = 1.0;
 
     overAudio.current = new Audio('/over.mp3' + cacheBuster);
     overAudio.current.volume = 1.0;
 
+    // Handle audio ending to restart loop (some browsers don't reliably loop)
+    const handleEnded = () => {
+      if (audioRef.current && audioStarted) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(e => {
+          console.log("Audio loop restart failed", e);
+          setAudioBlocked(true);
+          setAudioStarted(false);
+        });
+      }
+    };
+
+    audioRef.current.addEventListener('ended', handleEnded);
+
     return () => {
-      if (audioRef.current) audioRef.current.pause();
+      if (audioRef.current) {
+        audioRef.current.removeEventListener('ended', handleEnded);
+        audioRef.current.pause();
+      }
       if (succesAudio.current) succesAudio.current.pause();
       if (termineAudio.current) termineAudio.current.pause();
       if (overAudio.current) overAudio.current.pause();
     };
   }, []);
 
-  const playMusic = () => {
-    if (audioRef.current && !audioStarted) {
-      audioRef.current.play().catch(e => console.log("Audio play blocked", e));
-      setAudioStarted(true);
+  const playMusic = useCallback(() => {
+    if (audioRef.current) {
+      // Reset blocked state when attempting to play
+      setAudioBlocked(false);
+      audioRef.current.play().then(() => {
+        setAudioStarted(true);
+        setAudioBlocked(false);
+        // Optional: Show a brief toast when audio starts successfully
+        // showToast('🔊 Audio activé', false);
+      }).catch(e => {
+        console.log("Audio play blocked", e);
+        setAudioBlocked(true);
+        setAudioStarted(false);
+        // Optional: Show a toast when audio is blocked
+        // showToast('🔇 Audio bloqué - cliquez sur l\'icône volume pour l\'activer', false);
+      });
     }
-  };
+  }, []);
 
-  const stopMusic = () => {
+  const stopMusic = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       setAudioStarted(false);
+      // Note: We don't set audioBlocked to false here because
+      // a paused audio can be resumed without being blocked
+      // But we do reset it when stopping completely to avoid confusion
+      // setAudioBlocked(false); // Commented out to preserve blocked state detection
     }
-  };
+  }, []);
 
   const playSound = (freq: number, dur: number, type: any = 'sine', vol = 0.1) => {
     try {
@@ -697,6 +680,10 @@ export default function App() {
                 session={session}
                 playerId={playerId!}
                 sounds={sounds}
+                audioStarted={audioStarted}
+                audioBlocked={audioBlocked}
+                playMusic={playMusic}
+                stopMusic={stopMusic}
                 onComplete={(score: number, total: number, eliminated: boolean = false) => {
                   (window as any).scoreData = { score, total, eliminated };
                   stopMusic();
@@ -733,7 +720,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {!showSplash && currentScreen === 'admin' && (
+          {!showSplash && currentScreen === 'admin' && isValidated && (
             <motion.div
               key="admin"
               initial={{ opacity: 0 }}
@@ -743,14 +730,15 @@ export default function App() {
             >
               <AdminScreen
                 getActiveSession={getActiveSession}
-                getActiveSessions={getAdminSessions}
-                updateValidationCode={updateValidationCode}
-                updateUnlimitedCodes={updateUnlimitedCodes}
-                updateSessionGroups={updateSessionGroups}
-                startSession={startSession}
-                stopSession={stopSession}
-                deletePlayer={deletePlayer}
-                deleteAllPlayers={deleteAllPlayers}
+                getActiveSessions={adminApi.getSessions}
+                onLogout={handleAdminLogout}
+                updateValidationCode={adminApi.updateValidationCode}
+                updateUnlimitedCodes={adminApi.updateUnlimitedCodes}
+                updateSessionGroups={adminApi.updateSessionGroups}
+                startSession={adminApi.startSession}
+                stopSession={adminApi.stopSession}
+                deletePlayer={adminApi.deletePlayer}
+                deleteAllPlayers={adminApi.deleteAllPlayers}
                 showToast={showToast}
                 sounds={sounds}
                 isValidated={isValidated}
@@ -1146,7 +1134,7 @@ function EntryScreen({ session, setSession, getActiveSession, nameInput, setName
 }
 
 // --- ENHANCED QUIZ SCREEN ---
-function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRanking }: any) {
+function QuizScreen({ session, playerId, sounds, audioStarted, audioBlocked, playMusic, stopMusic, onComplete, showToast, onShowRanking }: any) {
   const [localSession, setLocalSession] = useState(session);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -1520,6 +1508,33 @@ function QuizScreen({ session, playerId, sounds, onComplete, showToast, onShowRa
         >
           <Trophy className="w-4 h-4 text-game-orange" /> {score} PTS
         </motion.button>
+
+        {/* Audio Control Button */}
+        <motion.button
+          className="flex items-center gap-2 transition-colors hover:text-game-yellow"
+          whileHover={{ scale: 1.05 }}
+          onClick={() => {
+            if (audioStarted) {
+              stopMusic();
+            } else {
+              playMusic();
+            }
+          }}
+        >
+          {audioBlocked ? (
+            <motion.div
+              animate={audioBlocked ? { scale: [1, 1.2, 1] } : {}}
+              transition={{ duration: 0.5 }}
+            >
+              <Volume2 className="w-4 h-4 text-game-yellow" aria-label="Audio blocked - click to enable" />
+            </motion.div>
+          ) : audioStarted ? (
+            <Volume2 className="w-4 h-4" aria-label="Disable audio" />
+          ) : (
+            <Volume1 className="w-4 h-4" aria-label="Enable audio" />
+          )}
+        </motion.button>
+
         {timeLeft !== null && (
           <motion.span
             className={`flex items-center gap-2 transition-colors ${isUrgent ? 'text-game-red' : ''}`}

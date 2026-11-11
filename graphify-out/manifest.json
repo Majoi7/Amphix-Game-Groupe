@@ -1,0 +1,182 @@
+{
+  "app/applet/test-supabase.ts": {
+    "mtime": 1791491715.558586,
+    "seen": 1794431169.3148096,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "metadata.json": {
+    "mtime": 1791484768.5925236,
+    "seen": 1794431169.3148096,
+    "ast_hash": "7e97d1a9b43d939c9550cae2961f3420",
+    "semantic_hash": "7e97d1a9b43d939c9550cae2961f3420"
+  },
+  "package.json": {
+    "mtime": 1794431400.506112,
+    "seen": 1794435797.7351286,
+    "ast_hash": "fbc6b60456d9b9554851862a0a3933ac",
+    "semantic_hash": "fbc6b60456d9b9554851862a0a3933ac"
+  },
+  "server/src/index.ts": {
+    "mtime": 1794437047.2636347,
+    "seen": 1794437233.3041275,
+    "ast_hash": "102cbd728741c40f4ef0e6d669048485",
+    "semantic_hash": "102cbd728741c40f4ef0e6d669048485"
+  },
+  "server/src/questions.ts": {
+    "mtime": 1792006133.8172975,
+    "seen": 1794431169.3148096,
+    "ast_hash": "4f3b81cb2d650a7b2f5c1e74f3e54050",
+    "semantic_hash": "4f3b81cb2d650a7b2f5c1e74f3e54050"
+  },
+  "server/tsconfig.json": {
+    "mtime": 1794437592.165176,
+    "seen": 1794437737.914952,
+    "ast_hash": "fd6fd8f8dc2698746eb534818c083c81",
+    "semantic_hash": "fd6fd8f8dc2698746eb534818c083c81"
+  },
+  "src/App.tsx": {
+    "mtime": 1794437611.3769033,
+    "seen": 1794437737.914952,
+    "ast_hash": "d36e4b7c3108f527549dc6b7dd9f14c7",
+    "semantic_hash": "d36e4b7c3108f527549dc6b7dd9f14c7"
+  },
+  "src/ErrorBoundary.tsx": {
+    "mtime": 1791484768.914509,
+    "seen": 1794431169.3158128,
+    "ast_hash": "c88b99dc1394c7d705e0af85cace7179",
+    "semantic_hash": "c88b99dc1394c7d705e0af85cace7179"
+  },
+  "src/components/AdminScreen.tsx": {
+    "mtime": 1794437594.4556348,
+    "seen": 1794437737.914952,
+    "ast_hash": "2257a5879873a7594ee3512633d4c0dc",
+    "semantic_hash": "2257a5879873a7594ee3512633d4c0dc"
+  },
+  "src/components/LiveRankingScreen.tsx": {
+    "mtime": 1791743507.2617714,
+    "seen": 1794431169.3158128,
+    "ast_hash": "d84641a23e5899b5a68be4e15c85a7a9",
+    "semantic_hash": "d84641a23e5899b5a68be4e15c85a7a9"
+  },
+  "src/components/SQLInstruction.tsx": {
+    "mtime": 1791484768.9185076,
+    "seen": 1794431169.3158128,
+    "ast_hash": "b8ce7282d6f388d333d3132e0e2e9e71",
+    "semantic_hash": "b8ce7282d6f388d333d3132e0e2e9e71"
+  },
+  "src/data/questions.js": {
+    "mtime": 1792006712.5707939,
+    "seen": 1794431169.3158128,
+    "ast_hash": "d26c3da4bbbb7e443f3b0de4b17f4332",
+    "semantic_hash": "d26c3da4bbbb7e443f3b0de4b17f4332"
+  },
+  "src/data/questions.ts": {
+    "mtime": 1791998708.3469784,
+    "seen": 1794431169.3158128,
+    "ast_hash": "62c3645f05b8fee173c16ff9daaf3391",
+    "semantic_hash": "62c3645f05b8fee173c16ff9daaf3391"
+  },
+  "src/data/sharedQuestions.js": {
+    "mtime": 1792006750.018947,
+    "seen": 1794431169.3158128,
+    "ast_hash": "47461a077e35c0d9cfdce6304f7c96a6",
+    "semantic_hash": "47461a077e35c0d9cfdce6304f7c96a6"
+  },
+  "src/data/sharedQuestions.ts": {
+    "mtime": 1792006140.9910896,
+    "seen": 1794431169.3158128,
+    "ast_hash": "540f2d9e5d3595f952755617cc187593",
+    "semantic_hash": "540f2d9e5d3595f952755617cc187593"
+  },
+  "src/lib/adminApi.test.ts": {
+    "mtime": 1794437630.1562717,
+    "seen": 1794437737.915957,
+    "ast_hash": "6ccc34bee01e9e0d5a8386f4fff990ed",
+    "semantic_hash": "6ccc34bee01e9e0d5a8386f4fff990ed"
+  },
+  "src/lib/adminApi.ts": {
+    "mtime": 1794437589.8251188,
+    "seen": 1794437737.915957,
+    "ast_hash": "a14a95f68a9d5a04c577fd29922038a6",
+    "semantic_hash": "a14a95f68a9d5a04c577fd29922038a6"
+  },
+  "src/lib/supabase.ts": {
+    "mtime": 1791491655.184158,
+    "seen": 1794431169.3158128,
+    "ast_hash": "a78313327411f1c8c7d5109f214fbaf3",
+    "semantic_hash": "a78313327411f1c8c7d5109f214fbaf3"
+  },
+  "src/main.tsx": {
+    "mtime": 1791484768.9742713,
+    "seen": 1794431169.3158128,
+    "ast_hash": "eb0a7a24ae848cdfe41cd075e1bfeaa6",
+    "semantic_hash": "eb0a7a24ae848cdfe41cd075e1bfeaa6"
+  },
+  "tsconfig.json": {
+    "mtime": 1792006408.2868586,
+    "seen": 1794431169.3158128,
+    "ast_hash": "f9f561572bb90b1f1cf520a10835cd0a",
+    "semantic_hash": "f9f561572bb90b1f1cf520a10835cd0a"
+  },
+  "vite-env.d.ts": {
+    "mtime": 1791743242.4617665,
+    "seen": 1794431169.3158128,
+    "ast_hash": "a38b3692f828edf0a63a6da88ec0b8a9",
+    "semantic_hash": "a38b3692f828edf0a63a6da88ec0b8a9"
+  },
+  "vite.config.ts": {
+    "mtime": 1792006167.2245944,
+    "seen": 1794431169.3158128,
+    "ast_hash": "aabb0975484a300eb1f1b0b935e7415b",
+    "semantic_hash": "aabb0975484a300eb1f1b0b935e7415b"
+  },
+  "public/Beauty_And_A_Beat.mp3": {
+    "mtime": 1791484768.8974364,
+    "seen": 1794431169.3158128,
+    "ast_hash": "ff1962de7e969708020d541d2c6e49af",
+    "semantic_hash": "ff1962de7e969708020d541d2c6e49af"
+  },
+  "public/over.mp3": {
+    "mtime": 1791484768.8994088,
+    "seen": 1794431169.3158128,
+    "ast_hash": "c047dc27779b3bbea29bab9451114642",
+    "semantic_hash": "c047dc27779b3bbea29bab9451114642"
+  },
+  "public/succes.mp3": {
+    "mtime": 1791484768.900408,
+    "seen": 1794431169.3158128,
+    "ast_hash": "f6d7438ed6573ff56049bbb7b1d1cfd0",
+    "semantic_hash": "f6d7438ed6573ff56049bbb7b1d1cfd0"
+  },
+  "public/termine.mp3": {
+    "mtime": 1791484768.911511,
+    "seen": 1794431169.3158128,
+    "ast_hash": "d2d87fcf411da8ab40d6229e01c88beb",
+    "semantic_hash": "d2d87fcf411da8ab40d6229e01c88beb"
+  },
+  "server/src/adminAuth.ts": {
+    "mtime": 1794435384.3571239,
+    "seen": 1794435797.7351286,
+    "ast_hash": "d1d3e4e1bea5752795b1d58f556b0d1e",
+    "semantic_hash": "d1d3e4e1bea5752795b1d58f556b0d1e"
+  },
+  "src/lib/useAdminRefresh.test.ts": {
+    "mtime": 1794437630.995954,
+    "seen": 1794437737.915957,
+    "ast_hash": "46ae5eb396b112639f425a7c4884b532",
+    "semantic_hash": "46ae5eb396b112639f425a7c4884b532"
+  },
+  "src/lib/useAdminRefresh.ts": {
+    "mtime": 1794431290.3783214,
+    "seen": 1794435797.7495039,
+    "ast_hash": "8443adbd34a9db8948fb2130ca8761dd",
+    "semantic_hash": "8443adbd34a9db8948fb2130ca8761dd"
+  },
+  "server/src/adminAuth.test.ts": {
+    "mtime": 1794437049.3607888,
+    "seen": 1794437233.3041275,
+    "ast_hash": "da774876e27028f7c246a42a618b6fc0",
+    "semantic_hash": "da774876e27028f7c246a42a618b6fc0"
+  }
+}

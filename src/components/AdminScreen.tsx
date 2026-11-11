@@ -1,13 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useAdminRefresh } from '../lib/useAdminRefresh';
+import { isAdminUnauthorizedError } from '../lib/adminApi';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Users, Clock, Play, Square, Trash2, LogOut, Key, X, Plus } from 'lucide-react';
+import { Trophy, Users, Clock, Play, Square, Trash2, LogOut, Key, X, Plus, Bell, Layout, List, Settings, User, Server, Database, Circle, ArrowUpRight, BarChart3, Zap } from 'lucide-react';
 
 import { parseSafeDate } from '../App';
 import SQLInstruction from './SQLInstruction';
 import { SHARED_QUESTIONS, getAvailableCategories } from '../data/sharedQuestions';
 
 const AVAILABLE_CATEGORIES = getAvailableCategories();
+
+const subscribeAdminRefresh = (refresh: () => void) => {
+  const channel = supabase.channel('public:admin')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, refresh)
+    .subscribe();
+  return () => { void supabase.removeChannel(channel); };
+};
 
 export default function AdminScreen({
   getActiveSession,
@@ -21,22 +31,23 @@ export default function AdminScreen({
   deletePlayer,
   deleteAllPlayers,
   getActiveSessions,
-  isValidated
+  isValidated,
+  onLogout
 }: any) {
   const [session, setSession] = useState<any>(null);
   const [duration, setDuration] = useState(10);
-  
+
   // Validation Codes State
-  const [validationCode, setValidationCode] = useState(() => 
+  const [validationCode, setValidationCode] = useState(() =>
     Array.from({ length: 20 }, () => Math.floor(1000 + Math.random() * 9000).toString()).join(', ')
   );
   const [unlimitedCode, setUnlimitedCode] = useState('');
   const [allGeneratedCodes, setAllGeneratedCodes] = useState<string[]>(() => {
-    try { 
+    try {
       const stored = localStorage.getItem('adminAllCodes');
       return stored ? JSON.parse(stored) : validationCode.split(',').map((c: string) => c.trim());
-    } catch(e) { 
-      return validationCode.split(',').map((c: string) => c.trim()); 
+    } catch(e) {
+      return validationCode.split(',').map((c: string) => c.trim());
     }
   });
 
@@ -208,13 +219,20 @@ export default function AdminScreen({
   const [viewMode, setViewMode] = useState<'active' | 'libre'>('active');
       const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+  const refreshAllowed = useRef(isValidated);
+  refreshAllowed.current = isValidated;
+  useEffect(() => {
+    // StrictMode replays setup after cleanup; restore the gate on every setup.
+    refreshAllowed.current = isValidated;
+    return () => { refreshAllowed.current = false; };
+  }, [isValidated]);
+
   const refresh = async () => {
-    // Gate refresh calls based on validation state
-    if (!isValidated) {
-      return;
-    }
+    // Consult the current validation state, including in timer/realtime callbacks.
+    if (!refreshAllowed.current) return;
     try {
       const sessionsData = await getActiveSessions();
+      if (!refreshAllowed.current) return;
       const activeSession = sessionsData.activeSession;
       const libreSession = sessionsData.libreSession;
 
@@ -242,6 +260,10 @@ export default function AdminScreen({
         else setLeaderboard([]);
       }
     } catch(e) {
+      if (isAdminUnauthorizedError(e)) {
+        refreshAllowed.current = false;
+        return; // The shared admin client requests re-authentication once.
+      }
       console.error("Error in refresh:", e);
       showToast('Erreur de connexion', true);
     }
@@ -257,22 +279,7 @@ export default function AdminScreen({
     }
   }, [viewMode]);
 
-  useEffect(() => {
-    refresh();
-
-    // Subscribe to realtime updates on players and sessions to be instantly updated if enabled by user
-    const channel = supabase.channel('public:admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => refresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => refresh())
-      .subscribe();
-
-    const id = setInterval(refresh, 30000); // 30s instead of 10s
-
-    return () => {
-      clearInterval(id);
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  useAdminRefresh(isValidated, refresh, subscribeAdminRefresh);
 
   const fetchLeaderboard = async (sessionId: string) => {
     try {
@@ -355,19 +362,29 @@ export default function AdminScreen({
         )}
       </AnimatePresence>
 
-      <div className="flex justify-between items-center bg-white/80 backdrop-blur-xl p-5 rounded-[2rem] shadow-lg border border-white">
-        <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-game-indigo to-game-blue inline-flex items-center gap-2">
-          <Trophy className="w-6 h-6 text-game-indigo" />
-          DASHBOARD ADMIN
-        </h2>
-        <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => window.location.hash = '#/'} 
-          className="p-3 bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors"
-        >
-          <LogOut className="w-5 h-5" />
-        </motion.button>
+      <div className="flex flex-col lg:flex-row items-start justify-between w-full px-6 py-8 bg-gradient-to-br from-game-indigo/5 to-game-blue/5 rounded-3xl backdrop-blur-lg border border-game-indigo/20 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-game-indigo to-game-blue rounded-xl flex items-center justify-center">
+            <Trophy className="w-6 h-6 text-white" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-game-indigo to-game-blue tracking-tighter">
+              Amphix Admin
+            </h1>
+            <p className="text-sm text-gray-500 uppercase tracking-wider">Tableau de bord premium</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onLogout}
+            className="p-4 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all flex items-center gap-2 border border-gray-200 hover:border-gray-300"
+          >
+            <LogOut className="w-5 h-5 text-gray-600 hover:text-gray-800" />
+            <span className="font-medium text-gray-600 hover:text-gray-800">Déconnexion</span>
+          </motion.button>
+        </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">

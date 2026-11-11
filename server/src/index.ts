@@ -18,32 +18,55 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { SERVER_QUESTIONS, getSanitizedQuestions, validateAnswer } from './questions.js';
+import { readAdminAuthConfig } from './adminAuth.js';
 
-// Load environment variables
-dotenv.config({ path: './server/.env' });
+// Temporary deployment diagnostics: never log values, hashes, or lengths.
+// NODE_ENV controls production mode; the other variables are required in production.
+const productionEnvNames = [
+  'NODE_ENV',
+  'ADMIN_PASSWORD_HASH',
+  'JWT_SECRET',
+  'PLAYER_JWT_SECRET',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+] as const;
+
+const logEnvPresence = (
+  stage: 'process-before-dotenv' | 'dotenv-file' | 'process-after-dotenv',
+  environment: Record<string, string | undefined>,
+) => {
+  for (const name of productionEnvNames) {
+    // Match the validations below: an empty value is ABSENT.
+    console.log(`[Config][${stage}] ${name}=${environment[name] ? 'PRESENT' : 'ABSENT'}`);
+  }
+};
+
+logEnvPresence('process-before-dotenv', process.env);
+
+// This path is relative to process.cwd(), not to this source/compiled file.
+// Missing .env is non-fatal, and injected variables must never be overwritten.
+const dotenvResult = dotenv.config({ path: './server/.env', override: false, quiet: true });
+console.log(`[Config][dotenv-file] FILE_READABLE=${dotenvResult.error ? 'ABSENT' : 'PRESENT'}`);
+logEnvPresence('dotenv-file', dotenvResult.parsed ?? {});
+logEnvPresence('process-after-dotenv', process.env);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Environment variable validation
-const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
-const jwtSecret = process.env.JWT_SECRET;
-const sessionName = process.env.SESSION_NAME || 'amphix_admin_session';
-const secureCookies = process.env.SECURE_COOKIES === 'true'; // Set to true in production with HTTPS
+// Environment variable validation (fail before accepting admin logins).
+const {
+  adminPasswordHash,
+  jwtSecret,
+  sessionName,
+  secureCookies,
+  isProduction,
+  adminCookieOptions,
+} = readAdminAuthConfig();
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10); // 15 minutes default
 const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5', 10); // 5 requests per window
 
 // Player authentication variables
 const playerSessionName = process.env.PLAYER_SESSION_NAME || 'amphix_player_session';
-const isProduction = process.env.NODE_ENV === 'production';
-
-if (!adminPasswordHash) {
-  throw new Error('Missing ADMIN_PASSWORD_HASH environment variable. Please set it with a bcrypt hash of the admin password.');
-}
-
-if (!jwtSecret) {
-  throw new Error('Missing JWT_SECRET environment variable. Please set it to a secure random string.');
-}
 
 // Player JWT secret: must be explicit in production.
 // In development we derive a distinct value from JWT_SECRET so a missing
@@ -141,7 +164,10 @@ const authenticateAdmin = (req: AuthRequest, res: Response, next: NextFunction) 
 
   try {
     const decoded = jwt.verify(token, jwtSecret);
-    // Attach admin info to request for use in route handlers
+    // A valid signature alone does not make a player/unrelated JWT an admin session.
+    if (typeof decoded !== 'object' || !decoded || decoded.id !== 'admin') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
     req.admin = { id: decoded.id };
     next();
   } catch (err) {
@@ -215,17 +241,10 @@ app.post('/api/admin/login', authLimiter, async (req: AuthRequest, res: Response
       { expiresIn: '24h' } // Token expires in 24 hours
     );
 
-    // Set httpOnly cookie for admin session.
-    // SameSite=None is only honoured by browsers when the cookie is also
-    // Secure, so pairing it with secure:false made the browser silently drop
-    // it - the admin was logged in server-side but every later request 401'd.
-    // Over local HTTP we use Lax (same-site, ports do not count), and only
-    // switch to None+Secure once HTTPS is actually in use.
+    // HTTPS deployments need None+Secure for the cross-site frontend/backend.
+    // Cookie creation and deletion share the same host-only settings.
     res.cookie(sessionName, token, {
-      httpOnly: true,
-      secure: secureCookies,
-      sameSite: secureCookies ? 'none' : 'lax',
-      path: '/',
+      ...adminCookieOptions,
       maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
     });
 
@@ -241,12 +260,7 @@ app.post('/api/admin/login', authLimiter, async (req: AuthRequest, res: Response
 
 // Logout endpoint
 app.post('/api/admin/logout', authenticateAdmin, (_req: Request, res: Response) => {
-  res.clearCookie(sessionName, {
-    httpOnly: true,
-    secure: secureCookies, // Must match the login cookie settings
-    sameSite: secureCookies ? 'none' : 'lax',
-    path: '/'
-  });
+  res.clearCookie(sessionName, adminCookieOptions);
 
   res.json({ message: 'Logged out successfully' });
 });
@@ -1127,11 +1141,8 @@ app.post('/api/player/answer', authenticatePlayer, async (req: AuthRequest, res:
     // touched group_score, which is why every leaderboard showed 0.
     const unlimitedLives = player.individual_points === -1;
     let newLives = player.individual_points;
-    let newGroupScore = player.group_score || 0;
 
     if (isCorrect) {
-      newGroupScore += 10; // POINTS_PER_QUESTION
-
       const totalConsecutiveCorrect = consecutiveCorrectCount + 1;
       if (totalConsecutiveCorrect % 3 === 0 && !unlimitedLives) {
         newLives += 1; // life bonus for three correct answers in a row
@@ -1140,16 +1151,91 @@ app.post('/api/player/answer', authenticatePlayer, async (req: AuthRequest, res:
       newLives = Math.max(0, newLives - 1);
     }
 
-    // Update player record
-    const { data: updatedPlayer, error: updateError } = await supabase
-      .from('players')
-      .update({
-        individual_points: newLives,
-        group_score: newGroupScore
-      })
-      .eq('id', playerId)
-      .select()
-      .single();
+    // Update player record with retry logic to prevent race conditions
+    let updateAttempts = 0;
+    const maxUpdateAttempts = 5;
+    let updatedPlayer: any = null;
+    let lastUpdateError: any = null;
+
+    while (updateAttempts < maxUpdateAttempts) {
+      updateAttempts++;
+
+      // Read current state to ensure we have the latest values
+      const { data: currentPlayer, error: fetchError } = await supabase
+        .from('players')
+        .select('individual_points, group_score')
+        .eq('id', playerId)
+        .single();
+
+      if (fetchError) {
+        lastUpdateError = fetchError;
+        break;
+      }
+
+      // Calculate new values based on current state
+      let currentLives = currentPlayer.individual_points;
+      let currentScore = currentPlayer.group_score || 0;
+
+      if (isCorrect) {
+        const totalConsecutiveCorrect = consecutiveCorrectCount + 1;
+        if (totalConsecutiveCorrect % 3 === 0 && !unlimitedLives) {
+          currentLives += 1; // life bonus for three correct answers in a row
+        }
+        currentScore += 10; // POINTS_PER_QUESTION
+      } else if (!unlimitedLives) {
+        currentLives = Math.max(0, currentLives - 1);
+      }
+
+      // Attempt update with optimistic locking - only update if current values match
+      const { data: updatedPlayerData, error: updateError } = await supabase
+        .from('players')
+        .update({
+          individual_points: currentLives,
+          group_score: currentScore
+        })
+        .eq('id', playerId)
+        .eq('individual_points', currentPlayer.individual_points) // Optimistic lock
+        .eq('group_score', currentPlayer.group_score) // Optimistic lock
+        .select()
+        .single();
+
+      if (!updateError && updatedPlayerData) {
+        // Update successful
+        updatedPlayer = updatedPlayerData;
+        break;
+      }
+
+      // Store the last error for potential return
+      lastUpdateError = updateError;
+
+      // If we get here, the update failed (likely due to concurrent modification)
+      // Continue the loop to retry with fresh data
+      if (updateAttempts >= maxUpdateAttempts) {
+        // Max retries exceeded
+        break;
+      }
+
+      // Small delay before retry to reduce contention
+      await new Promise(resolve => setTimeout(resolve, 50 * updateAttempts));
+    }
+
+    // Handle the result
+    let updateError: any = null;
+    if (lastUpdateError || !updatedPlayer) {
+      // Update failed after all retries, fall back to regular update
+      const { data: updatedPlayerData, error: error } = await supabase
+        .from('players')
+        .update({
+          individual_points: newLives,
+          group_score: isCorrect ? (player.group_score || 0) + 10 : player.group_score
+        })
+        .eq('id', playerId)
+        .select()
+        .single();
+
+      updatedPlayer = updatedPlayerData;
+      updateError = error;
+    }
 
     if (updateError) {
       console.error('Error updating player:', updateError);

@@ -48,8 +48,13 @@ PORT=3001
 SUPABASE_URL=your_actual_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_actual_supabase_service_role_key
 CORS_ORIGINS=http://localhost:3000
-SESSION_SECRET=your_session_secret_here_change_in_production
+ADMIN_PASSWORD_HASH=your_complete_bcrypt_hash
+JWT_SECRET=your_stable_random_admin_jwt_secret
+PLAYER_JWT_SECRET=your_separate_random_player_jwt_secret
+SECURE_COOKIES=false
 ```
+`SESSION_SECRET` does not replace `JWT_SECRET`: administrator authentication
+uses a signed JWT in an HttpOnly cookie, not an Express session store.
 
 ## Development Setup
 
@@ -97,6 +102,95 @@ For a public deployment, `CORS_ORIGINS` must contain the real frontend origin
 (comma-separated list allowed) and `PLAYER_JWT_SECRET` **must** be set
 explicitly — the development fallback that derives it from `JWT_SECRET` is
 disabled when `NODE_ENV=production`, so the server refuses to start without it.
+
+### SmarterASP and Vercel: administrator authentication
+
+The frontend `https://game.amphix.site` and backend
+`https://amphix7-002-site1.itempurl.com` are **cross-site**. Cookies must use
+`HttpOnly; Secure; SameSite=None; Path=/`. Keep them host-only: do not set
+`Domain=game.amphix.site` on a response from the backend's unrelated domain.
+
+Set these values in the SmarterASP Node application's environment panel:
+
+| Variable | Production value or requirement |
+| --- | --- |
+| `NODE_ENV` | `production` (lowercase recommended; casing/whitespace is normalized by the auth configuration) |
+| `SECURE_COOKIES` | `true`; omitted defaults to true in production; explicit false or invalid values stop startup |
+| `CORS_ORIGINS` | `https://game.amphix.site`, without a trailing slash; add only approved exact origins |
+| `ADMIN_PASSWORD_HASH` | Complete bcrypt hash of the administrator password, not the plain password; no extra quotes/whitespace in the panel |
+| `JWT_SECRET` | Strong random signing secret, stable across restarts and identical on every backend instance |
+| `PLAYER_JWT_SECRET` | Strong independent random secret, explicitly required in production |
+| `SESSION_NAME` | `amphix_admin_session`, or the same custom name on every instance |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Existing backend-only Supabase settings; never expose the service-role key to Vercel's frontend |
+| `PORT` | Keep the port injected by the host; do not overwrite it with the local development port |
+
+`dotenv` loads `server/.env` relative to the application working directory with
+`override: false`: injected environment variables take priority. Check the
+existing presence-only startup diagnostics, never log secret values. A missing
+or malformed bcrypt hash or missing `JWT_SECRET` now produces a configuration
+error at startup, instead of an apparently incorrect password during login.
+`SESSION_SECRET` is not used in this administrator login flow.
+
+In Vercel, the Production environment must contain:
+
+```text
+VITE_API_BASE_URL=https://amphix7-002-site1.itempurl.com
+```
+
+Retain the existing `VITE_SUPABASE_URL` and public `VITE_SUPABASE_ANON_KEY`.
+Never put `ADMIN_PASSWORD_HASH`, `JWT_SECRET`, `PLAYER_JWT_SECRET` or the
+Supabase service-role key in a `VITE_*` variable. Vite embeds `VITE_*` values
+at build time, so changing a Vercel variable requires a new frontend deployment.
+The published frontend already uses the correct backend URL and
+`credentials: 'include'`; a redeployment is still needed to ship the updated
+login/session verification and refresh behavior. A local `.env` pointing at
+`http://localhost:3001` must not be used for the production frontend build.
+
+#### Build and deployment order
+
+1. Run `npm test`, `npm run lint`, and `npm run build` with the intended frontend
+   build environment. Then run `npm run server:build` **after** the Vite build:
+   Vite empties `dist/`, while both builds emit into that directory.
+2. Deploy the compiled backend and question data, configure the environment
+   above, and restart the SmarterASP Node application using `npm start`.
+3. Redeploy Vercel with the production API URL. No Git commit, push, or remote
+   deployment is implied by local validation; each must be authorized separately.
+4. Log in privately in the browser and check the cookie roundtrip as described
+   below. Never paste a password, JWT, cookie value, or unredacted HAR into a report.
+
+#### Browser verification after deployment
+
+- `POST /api/admin/login` with a valid password returns 200 and sets the admin
+  cookie. In DevTools, check the cookie's **attributes and rejection reason**,
+  not its value. A 200 alone does not prove the cookie was stored.
+- The frontend then verifies the session on a protected endpoint before opening
+  the dashboard. That request and `GET /api/admin/sessions` must carry the admin
+  cookie and return 200. A database failure is a 500, not a 401.
+- A valid `POST /api/admin/sessions/start` should return 200; without a cookie,
+  or with an invalid/expired cookie, both protected session routes must return 401.
+  Do not start a real game merely to test without approval.
+- The response must contain the exact
+  `Access-Control-Allow-Origin: https://game.amphix.site` and
+  `Access-Control-Allow-Credentials: true`. The POST preflight must succeed.
+- On an expired session, the dashboard closes and requests reauthentication
+  once; polling and realtime refresh must not repeat unauthorized requests.
+- The logout button calls the protected `POST /api/admin/logout` route, which
+  deletes the HttpOnly cookie with matching security attributes. If that request
+  fails, the frontend reports the failure rather than claiming the cookie was
+  deleted. Logout removes the browser cookie; an already copied JWT remains
+  valid until its 24-hour expiry (there is no server-side JWT revocation store).
+
+`Authentication required` means the expected cookie was absent/empty;
+`Invalid or expired token` means JWT validation failed. If the cookie is sent
+but validation fails immediately after login, check that the deployed instances
+share the same stable `JWT_SECRET` and `SESSION_NAME`.
+
+Browsers can block third-party cookies even with `SameSite=None; Secure` and
+correct CORS. If DevTools confirms such a block, the durable solution is an
+approved same-site API domain (for example `api.amphix.site`, with DNS/TLS/backend
+routing configured) or a suitable same-origin proxy. That infrastructure change
+is not implemented here. Do not make admin routes public or move the JWT into
+`localStorage` to bypass browser policy.
 
 ## API Endpoints
 

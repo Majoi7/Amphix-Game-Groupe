@@ -1,0 +1,374 @@
+{
+  "communities": {
+    "0": [
+      "ref_bcryptjs",
+      "ref_cors",
+      "ref_dotenv",
+      "ref_express",
+      "ref_express_rate_limit",
+      "ref_jsonwebtoken",
+      "ref_node_crypto",
+      "ref_node_http",
+      "ref_supabase_supabase_js",
+      "server_src_adminauth",
+      "server_src_adminauth_environment",
+      "server_src_adminauth_readadminauthconfig",
+      "server_src_adminauth_test",
+      "server_src_adminauth_test_closeserver",
+      "server_src_adminauth_test_configured",
+      "server_src_adminauth_test_initialsession",
+      "server_src_adminauth_test_jwtsecret",
+      "server_src_adminauth_test_listenlocally",
+      "server_src_adminauth_test_passwordhash",
+      "server_src_index",
+      "server_src_index_accessmode",
+      "server_src_index_adminpasswordhash_jwtsecret_sessionname_securecookies_isproduction_admincookieoptions",
+      "server_src_index_allowedorigins",
+      "server_src_index_apilimiter",
+      "server_src_index_app",
+      "server_src_index_authenticateadmin",
+      "server_src_index_authenticateplayer",
+      "server_src_index_authlimiter",
+      "server_src_index_authrequest",
+      "server_src_index_dotenvresult",
+      "server_src_index_findsessionbycode",
+      "server_src_index_issessionexpired",
+      "server_src_index_logenvpresence",
+      "server_src_index_parsecodelist",
+      "server_src_index_parsedbdate",
+      "server_src_index_playerloginlimiter",
+      "server_src_index_productionenvnames",
+      "server_src_index_ratelimitmaxrequests",
+      "server_src_index_ratelimitwindowms",
+      "server_src_index_rationale_715",
+      "server_src_index_rationale_936",
+      "server_src_index_supabase",
+      "server_src_questions",
+      "server_src_questions_getquestionbyid",
+      "server_src_questions_getsanitizedquestions",
+      "server_src_questions_server_questions",
+      "server_src_questions_validateanswer"
+    ],
+    "1": [
+      "package",
+      "package_name",
+      "package_private",
+      "package_type",
+      "package_version",
+      "ref_autoprefixer",
+      "ref_canvas_confetti",
+      "ref_concurrently",
+      "ref_cookie_parser",
+      "ref_google_genai",
+      "ref_katex",
+      "ref_path",
+      "ref_react_markdown",
+      "ref_rehype_katex",
+      "ref_remark_math",
+      "ref_tailwindcss",
+      "ref_tailwindcss_vite",
+      "ref_tsx",
+      "ref_types_canvas_confetti",
+      "ref_types_cookie_parser",
+      "ref_types_cors",
+      "ref_types_express",
+      "ref_types_node",
+      "ref_typescript",
+      "ref_vite",
+      "ref_vitejs_plugin_react",
+      "vite_config"
+    ],
+    "2": [
+      "ref_lucide_react",
+      "ref_motion",
+      "src_app",
+      "src_app_app",
+      "src_app_arenascreen",
+      "src_app_backgroundshapes",
+      "src_app_entryscreen",
+      "src_app_floatingparticles",
+      "src_app_getactivesessions",
+      "src_app_parsesafedate",
+      "src_app_points_per_question",
+      "src_app_quizscreen",
+      "src_app_spacebackground",
+      "src_app_splashscreen",
+      "src_app_toast",
+      "src_app_usecountup",
+      "src_components_adminscreen",
+      "src_components_adminscreen_adminscreen",
+      "src_components_adminscreen_available_categories",
+      "src_components_adminscreen_subscribeadminrefresh",
+      "src_components_liverankingscreen",
+      "src_components_liverankingscreen_liverankingscreen",
+      "src_components_sqlinstruction",
+      "src_components_sqlinstruction_sqlinstruction",
+      "src_data_sharedquestions",
+      "src_lib_supabase",
+      "src_lib_supabase_supabase"
+    ],
+    "3": [
+      "package_dependencies",
+      "package_dependencies_bcryptjs",
+      "package_dependencies_canvas_confetti",
+      "package_dependencies_cookie_parser",
+      "package_dependencies_cors",
+      "package_dependencies_dotenv",
+      "package_dependencies_express",
+      "package_dependencies_express_rate_limit",
+      "package_dependencies_google_genai",
+      "package_dependencies_jsonwebtoken",
+      "package_dependencies_katex",
+      "package_dependencies_lucide_react",
+      "package_dependencies_motion",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_dependencies_react_markdown",
+      "package_dependencies_rehype_katex",
+      "package_dependencies_remark_math",
+      "package_dependencies_supabase_supabase_js",
+      "package_dependencies_tailwindcss_vite",
+      "package_dependencies_vite",
+      "package_dependencies_vitejs_plugin_react"
+    ],
+    "4": [
+      "ref_node_assert",
+      "ref_node_test",
+      "src_lib_adminapi",
+      "src_lib_adminapi_adminapierror",
+      "src_lib_adminapi_adminapierror_constructor",
+      "src_lib_adminapi_adminapioptions",
+      "src_lib_adminapi_createadminapi",
+      "src_lib_adminapi_isadminunauthorizederror",
+      "src_lib_adminapi_test",
+      "src_lib_adminapi_test_createfixture",
+      "src_lib_adminapi_test_json",
+      "src_lib_adminapi_test_sessions",
+      "src_lib_useadminrefresh",
+      "src_lib_useadminrefresh_startadminrefresh",
+      "src_lib_useadminrefresh_subscribe",
+      "src_lib_useadminrefresh_test",
+      "src_lib_useadminrefresh_test_flush",
+      "src_lib_useadminrefresh_useadminrefresh"
+    ],
+    "5": [
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowimportingtsextensions",
+      "tsconfig_compileroptions_allowjs",
+      "tsconfig_compileroptions_experimentaldecorators",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduledetection",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_paths",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_target",
+      "tsconfig_compileroptions_usedefineforclassfields",
+      "tsconfig_exclude"
+    ],
+    "6": [
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_clean",
+      "package_scripts_dev",
+      "package_scripts_dev_full",
+      "package_scripts_lint",
+      "package_scripts_preview",
+      "package_scripts_server_build",
+      "package_scripts_server_dev",
+      "package_scripts_server_start",
+      "package_scripts_start",
+      "package_scripts_test",
+      "package_scripts_test_backend",
+      "package_scripts_test_frontend"
+    ],
+    "7": [
+      "package_devdependencies",
+      "package_devdependencies_autoprefixer",
+      "package_devdependencies_concurrently",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_tsx",
+      "package_devdependencies_types_canvas_confetti",
+      "package_devdependencies_types_cookie_parser",
+      "package_devdependencies_types_cors",
+      "package_devdependencies_types_express",
+      "package_devdependencies_types_node",
+      "package_devdependencies_typescript",
+      "package_devdependencies_vite"
+    ],
+    "8": [
+      "ref_tsconfig_json",
+      "server_tsconfig",
+      "server_tsconfig_compileroptions",
+      "server_tsconfig_compileroptions_allowimportingtsextensions",
+      "server_tsconfig_compileroptions_module",
+      "server_tsconfig_compileroptions_moduleresolution",
+      "server_tsconfig_compileroptions_noemit",
+      "server_tsconfig_compileroptions_outdir",
+      "server_tsconfig_compileroptions_rootdir",
+      "server_tsconfig_exclude",
+      "server_tsconfig_extends",
+      "server_tsconfig_include"
+    ],
+    "9": [
+      "ref_react",
+      "ref_react_dom",
+      "src_errorboundary",
+      "src_errorboundary_errorboundary",
+      "src_errorboundary_errorboundary_componentdidcatch",
+      "src_errorboundary_errorboundary_getderivedstatefromerror",
+      "src_errorboundary_errorboundary_render",
+      "src_errorboundary_props",
+      "src_errorboundary_state",
+      "src_main"
+    ],
+    "10": [
+      "src_data_questions_all_questions",
+      "src_data_questions_js_src_data_questions",
+      "src_data_questions_ts_src_data_questions",
+      "src_data_sharedquestions_getavailablecategories",
+      "src_data_sharedquestions_js_src_data_sharedquestions",
+      "src_data_sharedquestions_shared_questions",
+      "src_data_sharedquestions_ts_src_data_sharedquestions"
+    ],
+    "11": [
+      "vite_env_d",
+      "vite_env_d_importmeta"
+    ],
+    "12": [
+      "app_applet_test_supabase"
+    ]
+  },
+  "cohesion": {
+    "0": 0.056429232192414434,
+    "1": 0.07977207977207977,
+    "2": 0.16524216524216523,
+    "3": 0.09090909090909091,
+    "4": 0.16993464052287582,
+    "5": 0.11764705882352941,
+    "6": 0.14285714285714285,
+    "7": 0.16666666666666666,
+    "8": 0.16666666666666666,
+    "9": 0.24444444444444444,
+    "10": 0.47619047619047616,
+    "11": 1.0,
+    "12": 1.0
+  },
+  "gods": [
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 15
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "degree": 14
+    },
+    {
+      "id": "src_app_app",
+      "label": "App()",
+      "degree": 14
+    },
+    {
+      "id": "src_components_adminscreen_adminscreen",
+      "label": "AdminScreen()",
+      "degree": 9
+    },
+    {
+      "id": "ref_react",
+      "label": "react",
+      "degree": 8
+    },
+    {
+      "id": "server_tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 7
+    },
+    {
+      "id": "src_app_parsesafedate",
+      "label": "parseSafeDate()",
+      "degree": 7
+    },
+    {
+      "id": "src_lib_adminapi_createadminapi",
+      "label": "createAdminApi()",
+      "degree": 7
+    },
+    {
+      "id": "src_errorboundary_errorboundary",
+      "label": "ErrorBoundary",
+      "degree": 5
+    },
+    {
+      "id": "ref_lucide_react",
+      "label": "lucide-react",
+      "degree": 5
+    }
+  ],
+  "surprises": [
+    {
+      "source": "AdminScreen()",
+      "target": "SQLInstruction()",
+      "source_files": [
+        "src/components/AdminScreen.tsx",
+        "src/components/SQLInstruction.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "peripheral node `SQLInstruction()` unexpectedly reaches hub `AdminScreen()`"
+    },
+    {
+      "source": "AdminScreen()",
+      "target": "useAdminRefresh()",
+      "source_files": [
+        "src/components/AdminScreen.tsx",
+        "src/lib/useAdminRefresh.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "App()",
+      "target": "createAdminApi()",
+      "source_files": [
+        "src/App.tsx",
+        "src/lib/adminApi.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "AdminScreen()",
+      "target": "isAdminUnauthorizedError()",
+      "source_files": [
+        "src/components/AdminScreen.tsx",
+        "src/lib/adminApi.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "createFixture()",
+      "target": "createAdminApi()",
+      "source_files": [
+        "src/lib/adminApi.test.ts",
+        "src/lib/adminApi.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "peripheral node `createFixture()` unexpectedly reaches hub `createAdminApi()`"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}
