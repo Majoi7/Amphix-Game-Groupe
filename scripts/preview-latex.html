@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Vérification LaTeX</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f4f6fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; }
+    main { max-width: 960px; margin: 0 auto; min-width: 0; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    .note { color: #475569; margin-bottom: 20px; }
+    section { min-width: 0; padding: 12px; background: white; border: 1px solid #dce3ed; border-radius: 12px; margin-bottom: 16px; }
+    h2 { font-size: 14px; margin: 0 0 8px; }
+    .question-text { font-size: 24px; line-height: 1.3; font-weight: 900; margin: 0 0 12px; min-width: 0; }
+    .options { display: grid; gap: 8px; min-width: 0; }
+    button { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; padding: 16px; text-align: left; font-size: 18px; font-weight: 700; line-height: 1.6; border: 1px solid #dce3ed; border-radius: 8px; background: white; color: inherit; }
+    .letter { flex-shrink: 0; width: 24px; font-weight: 600; }
+    #metrics { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main id="root"></main>
+  <pre id="metrics">Vérification en cours…</pre>
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import MathText from '../src/components/MathText.jsx';
+    import { ALL_QUESTIONS } from '../src/data/questions.ts';
+
+    // Local Vite-only fixture: does not authenticate, call the API or display correct answers.
+    const allIds = [13,14,22,23,41,70,86,88,89,90,91,127,128,129,130,131,132,133,240,241,248,256,257,259,276,277,278,279,280,301,302,303,304,305,306,307,324,325,326,339,340,341,342,343,344,345,346,347,348,349,350,351,352];
+    const params = new URLSearchParams(location.search);
+    const selected = Number(params.get('id'));
+    const frameWidth = Number(params.get('width'));
+    if ([320, 390].includes(frameWidth) && !params.has('frame')) {
+      // Chrome CLI has a minimum top-level width. A same-origin iframe provides
+      // a real 320/390 CSS-pixel viewport rather than shrinking/zooming formulas.
+      document.querySelectorAll('body > *').forEach(node => { if (node.tagName !== 'SCRIPT') node.remove(); });
+      document.body.style.padding = '0';
+      const iframe = document.createElement('iframe');
+      iframe.title = 'Vérification mobile';
+      iframe.style.cssText = `display:block;width:${frameWidth}px;height:1000px;border:0;margin:0;`;
+      const metricsNode = document.createElement('pre');
+      metricsNode.id = 'metrics';
+      metricsNode.textContent = 'Vérification en cours…';
+      document.body.prepend(iframe, metricsNode);
+      const childParams = new URLSearchParams(params);
+      childParams.set('frame', '1');
+      iframe.src = `${location.pathname}?${childParams}`;
+      const poll = () => {
+        if (iframe.contentDocument?.body?.dataset.ready !== 'true') return setTimeout(poll, 50);
+        metricsNode.textContent = iframe.contentDocument.getElementById('metrics').textContent;
+        document.body.dataset.ready = 'true';
+      };
+      poll();
+    } else {
+      const ids = allIds.includes(selected) ? [selected] : allIds;
+      const h = React.createElement;
+      createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+        h('h1', null, 'Vérification LaTeX'),
+        h('p', { className: 'note' }, 'Énoncés et boutons rendus avec MathText, dans un gabarit de test. Les réponses enregistrées ne sont pas affichées.'),
+        ...ids.map(id => {
+          const question = ALL_QUESTIONS.find(q => q.id === id);
+          return h('section', { key: id, 'data-question': id },
+            h('h2', null, 'Question ' + id),
+            h('p', { className: 'question-text' }, h(MathText, { text: question.text })),
+            h('div', { className: 'options' }, ...question.options.map((text, index) =>
+              h('button', { key: index, type: 'button' },
+                h('span', { className: 'letter' }, String.fromCharCode(65 + index)),
+                h(MathText, { text })
+              )
+            ))
+          );
+        })
+      ));
+
+      const tick = () => {
+        if (document.querySelectorAll('[data-question]').length !== ids.length) return setTimeout(tick, 50);
+        document.fonts.ready.then(() => requestAnimationFrame(() => {
+          const metrics = {
+            questions: ids.length,
+            viewport: innerWidth,
+            pageWidth: document.documentElement.scrollWidth,
+            formulas: document.querySelectorAll('section .katex').length,
+            mathErrors: document.querySelectorAll('section .katex-error').length,
+            buttonOverflow: [...document.querySelectorAll('button')].filter(b => b.scrollWidth > b.clientWidth + 1).map(b => Number(b.closest('[data-question]').dataset.question)),
+            scrollableExpressions: [...document.querySelectorAll('section span')].filter(s => getComputedStyle(s).overflowX === 'auto' && s.scrollWidth > s.clientWidth + 1).length,
+          };
+          metrics.ok = metrics.pageWidth <= metrics.viewport + 1 && !metrics.mathErrors && !metrics.buttonOverflow.length;
+          document.getElementById('metrics').textContent = JSON.stringify(metrics);
+          document.body.dataset.ready = 'true';
+        }));
+      };
+      tick();
+    }
+  </script>
+</body>
+</html>

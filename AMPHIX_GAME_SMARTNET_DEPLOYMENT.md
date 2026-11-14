@@ -3,8 +3,19 @@
 ## Overview
 This document describes how to deploy the Smartnet backend for Amphix Game. The backend provides a secure intermediary between the frontend and Supabase, protecting service keys and enabling future enhancements.
 
+## Production change safeguards
+
+- Work on `dev` or a `feature/...` branch, never directly on `main`.
+- SmarterASP deploys from `main`: changes reaching that branch can change production.
+- No commit, push, merge to `main`, deployment, DNS change, or server-side secret
+  rotation without explicit authorization. Local validation does not authorize any of them.
+- Provide production verification commands to the user; do not execute them.
+- Keep administrator JWTs in HttpOnly cookies. Never store them in `localStorage`
+  or make an administrator route public to bypass an authentication problem.
+
 ## Prerequisites
-- Node.js >= 18
+- Node.js >= 18 locally; SmarterASP builds with Node 22 and runs with Node 24.
+  Avoid fragile native dependencies across these versions.
 - npm >= 9
 - Supabase project with service role key
 
@@ -55,6 +66,9 @@ SECURE_COOKIES=false
 ```
 `SESSION_SECRET` does not replace `JWT_SECRET`: administrator authentication
 uses a signed JWT in an HttpOnly cookie, not an Express session store.
+These examples are for local development. Both `.env` and `server/.env` are
+ignored by Git and must never be committed or copied from a local machine to
+production. Never build a production frontend with the localhost API URL.
 
 ## Development Setup
 
@@ -110,7 +124,9 @@ The frontend `https://game.amphix.site` and backend
 `HttpOnly; Secure; SameSite=None; Path=/`. Keep them host-only: do not set
 `Domain=game.amphix.site` on a response from the backend's unrelated domain.
 
-Set these values in the SmarterASP Node application's environment panel:
+Keep the production `server/.env` on the SmarterASP server only; it is not in the
+repository. Configure the following there, or use host-injected environment
+variables if available (those take priority):
 
 | Variable | Production value or requirement |
 | --- | --- |
@@ -125,11 +141,22 @@ Set these values in the SmarterASP Node application's environment panel:
 | `PORT` | Keep the port injected by the host; do not overwrite it with the local development port |
 
 `dotenv` loads `server/.env` relative to the application working directory with
-`override: false`: injected environment variables take priority. Check the
-existing presence-only startup diagnostics, never log secret values. A missing
-or malformed bcrypt hash or missing `JWT_SECRET` now produces a configuration
-error at startup, instead of an apparently incorrect password during login.
-`SESSION_SECRET` is not used in this administrator login flow.
+`override: false`: injected environment variables take priority. In this server-only
+file, enclose the bcrypt hash in single quotes to preserve its `$` characters;
+dotenv removes the surrounding quotes before validation. Do not include literal
+quote characters in a host-injected value.
+
+A branch deployment has previously removed the server-only `.env`. After each
+authorized deployment, verify that `server/.env` still exists and that the host's
+`injected env (N)` count is not zero. Do not print or copy its values. Temporary
+environment-presence diagnostics have been removed; a missing or malformed bcrypt
+hash or missing `JWT_SECRET` still produces an explicit configuration error at
+startup. `SESSION_SECRET` is not used in this administrator login flow.
+
+The app trusts exactly one reverse-proxy hop (`app.set('trust proxy', 1)`) so
+Express rate limiting uses the visitor IP forwarded by SmarterASP rather than
+one shared proxy IP. Do not replace this with `true` or disable rate-limit
+validation. The reverse proxy must set or sanitize forwarded headers.
 
 In Vercel, the Production environment must contain:
 
@@ -148,17 +175,50 @@ login/session verification and refresh behavior. A local `.env` pointing at
 
 #### Build and deployment order
 
-1. Run `npm test`, `npm run lint`, and `npm run build` with the intended frontend
-   build environment. Then run `npm run server:build` **after** the Vite build:
-   Vite empties `dist/`, while both builds emit into that directory.
-2. Deploy the compiled backend and question data, configure the environment
-   above, and restart the SmarterASP Node application using `npm start`.
-3. Redeploy Vercel with the production API URL. No Git commit, push, or remote
-   deployment is implied by local validation; each must be authorized separately.
-4. Log in privately in the browser and check the cookie roundtrip as described
-   below. Never paste a password, JWT, cookie value, or unredacted HAR into a report.
+Local checks, without deploying:
+
+1. Run `npm test` and `npm run lint`.
+2. With the intended frontend build environment (never a localhost API URL for a
+   production build), run `npm run build`, then `npm run server:build` **in that
+   order**. Vite empties `dist/`, while both builds emit into that directory.
+3. Verify that `dist/server/src/index.js` and `dist/src/data/questions.js` exist.
+
+Only when explicitly authorized, SmarterASP's pipeline from `main` must use:
+
+- Build: `npm run server:build`
+- Start: `npm run server:start` (resolved entry: `dist/server/src/index.js`)
+
+Do **not** run `npm run build` (Vite) in this backend-only pipeline: it can delete
+compiled backend files from `dist/`. Without a valid Node start command, the
+platform can serve `dist/` as static files and return `index.html` for `/api/*`.
+
+Vercel handles the frontend separately with the production API URL. No Git
+commit, push, merge, restart, or remote deployment is implied by local checks.
+After an authorized deployment, verify the server-only environment file, then
+perform the checks below privately. Never paste a password, JWT, cookie value,
+or unredacted HAR into a report. Changes to middleware order, CORS parsing,
+cookie security options, or bcrypt validation must be reported before deployment.
+Any new environment variable must be explicitly identified for manual setup on
+the server and have a safe local default or a clear startup error.
+
+#### Commands to run only after an authorized deployment
+
+Provide these checks to the user; do not execute them as part of local validation:
+
+```powershell
+curl.exe -i https://amphix7-002-site1.itempurl.com/api/health
+curl.exe -i "https://amphix7-002-site1.itempurl.com/api/session/active" -H "Origin: https://game.amphix.site"
+```
+
+The health response must contain `X-Powered-By: Express` and JSON with
+`"status":"ok"`, never HTML. The active-session response must be JSON with
+`Access-Control-Allow-Origin: https://game.amphix.site`.
 
 #### Browser verification after deployment
+
+Use a private/incognito browser window. In the Application tab, verify that the
+admin cookie is present; on `/api/admin/sessions`, verify that the browser sends
+it and receives 200. Inspect attributes and presence, never copy cookie values.
 
 - `POST /api/admin/login` with a valid password returns 200 and sets the admin
   cookie. In DevTools, check the cookie's **attributes and rejection reason**,
@@ -191,6 +251,16 @@ approved same-site API domain (for example `api.amphix.site`, with DNS/TLS/backe
 routing configured) or a suitable same-origin proxy. That infrastructure change
 is not implemented here. Do not make admin routes public or move the JWT into
 `localStorage` to bypass browser policy.
+
+#### Pending security maintenance
+
+The administrator password, `JWT_SECRET`, and `PLAYER_JWT_SECRET` still need
+private rotation on the server. This is not performed by the local proxy/logging
+cleanup. Store only the new password's bcrypt hash in `ADMIN_PASSWORD_HASH`, and
+keep the administrator and player signing secrets distinct. Never print their
+values or put them in source code, documentation, messages, or `VITE_*` settings.
+Rotating the signing secrets invalidates existing administrator/player tokens;
+coordinate that maintenance before changing the server environment.
 
 ## API Endpoints
 

@@ -138,7 +138,9 @@ test('real Express admin routes use a local database fixture, never production S
   // Test the actual app without changing its production entry point or reading
   // a private .env file. Capture app.listen(), then choose a loopback-only port.
   let server: Server | undefined;
+  let application: Application | undefined;
   const listening = t.mock.method(express.application, 'listen', function (this: Application) {
+    application = this;
     server = createServer(this);
     return server;
   });
@@ -152,6 +154,7 @@ test('real Express admin routes use a local database fixture, never production S
     startupLogging.mock.restore();
   }
   assert.ok(server);
+  assert.ok(application);
   const backendUrl = await listenLocally(server);
   t.after(() => closeServer(server!));
 
@@ -167,6 +170,47 @@ test('real Express admin routes use a local database fixture, never production S
   });
   const cookieFor = (token: string) => `amphix_admin_session=${token}`;
   let adminCookie = '';
+
+  await t.test('one trusted proxy separates visitor rate limits and ignores earlier forwarded hops', async (t) => {
+    assert.equal(application.get('trust proxy'), 1);
+    const validationErrors: unknown[][] = [];
+    const logging = t.mock.method(console, 'error', (...args: unknown[]) => {
+      validationErrors.push(args);
+    });
+    try {
+      const visitors = [
+        { forwardedFor: '203.0.113.10, 198.51.100.10', apiRemaining: '1999', loginRemaining: '19' },
+        { forwardedFor: '203.0.113.10, 198.51.100.11', apiRemaining: '1999', loginRemaining: '19' },
+        // Changing an earlier, untrusted address must not reset this visitor's limit.
+        { forwardedFor: '203.0.113.11, 198.51.100.10', apiRemaining: '1998', loginRemaining: '18' },
+      ];
+      for (const visitor of visitors) {
+        const response = await request('/api/health', {
+          headers: { 'X-Forwarded-For': visitor.forwardedFor },
+        });
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('ratelimit-limit'), '2000');
+        assert.equal(response.headers.get('ratelimit-remaining'), visitor.apiRemaining);
+      }
+      for (const visitor of visitors) {
+        const response = await request('/api/admin/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': visitor.forwardedFor,
+          },
+          body: JSON.stringify({ password: 'wrong-proxy-test-password' }),
+        });
+        assert.equal(response.status, 401);
+        assert.equal(response.headers.get('set-cookie'), null);
+        assert.equal(response.headers.get('ratelimit-limit'), '20');
+        assert.equal(response.headers.get('ratelimit-remaining'), visitor.loginRemaining);
+      }
+    } finally {
+      logging.mock.restore();
+    }
+    assert.deepEqual(validationErrors, [], 'Forwarded requests must not trigger rate-limiter validation errors');
+  });
 
   await t.test('valid login creates a 24-hour host-only HttpOnly Secure SameSite=None cookie', async () => {
     const response = await post('/api/admin/login', { password });

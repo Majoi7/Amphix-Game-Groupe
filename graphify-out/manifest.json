@@ -12,16 +12,16 @@
     "semantic_hash": "7e97d1a9b43d939c9550cae2961f3420"
   },
   "package.json": {
-    "mtime": 1794431400.506112,
-    "seen": 1794435797.7351286,
-    "ast_hash": "fbc6b60456d9b9554851862a0a3933ac",
-    "semantic_hash": "fbc6b60456d9b9554851862a0a3933ac"
+    "mtime": 1794611038.6163316,
+    "seen": 1794611424.7668815,
+    "ast_hash": "01d3393e2d3001f25d44e80fe9a2ad38",
+    "semantic_hash": "01d3393e2d3001f25d44e80fe9a2ad38"
   },
   "server/src/index.ts": {
-    "mtime": 1794437047.2636347,
-    "seen": 1794437233.3041275,
-    "ast_hash": "102cbd728741c40f4ef0e6d669048485",
-    "semantic_hash": "102cbd728741c40f4ef0e6d669048485"
+    "mtime": 1794442040.504356,
+    "seen": 1794442774.9579828,
+    "ast_hash": "76e0cac5552d7f0b8fbcae9749273f0c",
+    "semantic_hash": "76e0cac5552d7f0b8fbcae9749273f0c"
   },
   "server/src/questions.ts": {
     "mtime": 1792006133.8172975,
@@ -36,10 +36,10 @@
     "semantic_hash": "fd6fd8f8dc2698746eb534818c083c81"
   },
   "src/App.tsx": {
-    "mtime": 1794437611.3769033,
-    "seen": 1794437737.914952,
-    "ast_hash": "d36e4b7c3108f527549dc6b7dd9f14c7",
-    "semantic_hash": "d36e4b7c3108f527549dc6b7dd9f14c7"
+    "mtime": 1794611164.2321124,
+    "seen": 1794611424.7668815,
+    "ast_hash": "fba624fa6de046e8d783ac3d52383f1c",
+    "semantic_hash": "fba624fa6de046e8d783ac3d52383f1c"
   },
   "src/ErrorBoundary.tsx": {
     "mtime": 1791484768.914509,
@@ -72,10 +72,10 @@
     "semantic_hash": "d26c3da4bbbb7e443f3b0de4b17f4332"
   },
   "src/data/questions.ts": {
-    "mtime": 1791998708.3469784,
-    "seen": 1794431169.3158128,
-    "ast_hash": "62c3645f05b8fee173c16ff9daaf3391",
-    "semantic_hash": "62c3645f05b8fee173c16ff9daaf3391"
+    "mtime": 1794603462.4915898,
+    "seen": 1794603958.0562222,
+    "ast_hash": "9bc8f92093bf0b8e359e4d50f06cc8cf",
+    "semantic_hash": "9bc8f92093bf0b8e359e4d50f06cc8cf"
   },
   "src/data/sharedQuestions.js": {
     "mtime": 1792006750.018947,
@@ -174,9 +174,51 @@
     "semantic_hash": "8443adbd34a9db8948fb2130ca8761dd"
   },
   "server/src/adminAuth.test.ts": {
-    "mtime": 1794437049.3607888,
-    "seen": 1794437233.3041275,
-    "ast_hash": "da774876e27028f7c246a42a618b6fc0",
-    "semantic_hash": "da774876e27028f7c246a42a618b6fc0"
+    "mtime": 1794442228.132009,
+    "seen": 1794442774.9579828,
+    "ast_hash": "b267ba65a7cd810a1e46caedd931106b",
+    "semantic_hash": "b267ba65a7cd810a1e46caedd931106b"
+  },
+  "src/data/questions.backup.js": {
+    "mtime": 1794601080.0776334,
+    "seen": 1794602761.9088326,
+    "ast_hash": "62c3645f05b8fee173c16ff9daaf3391",
+    "semantic_hash": "62c3645f05b8fee173c16ff9daaf3391"
+  },
+  "scripts/validate-latex.mjs": {
+    "mtime": 1794611023.343929,
+    "seen": 1794611424.7668815,
+    "ast_hash": "df8b3cdc23ba6d544de0e210f125b0d3",
+    "semantic_hash": "df8b3cdc23ba6d544de0e210f125b0d3"
+  },
+  "scripts/validate-latex.test.mjs": {
+    "mtime": 1794611023.3914146,
+    "seen": 1794611424.7668815,
+    "ast_hash": "dff9dade27acdb4f2fc780d8511a57e6",
+    "semantic_hash": "dff9dade27acdb4f2fc780d8511a57e6"
+  },
+  "src/components/MathText.jsx": {
+    "mtime": 1794611023.1597605,
+    "seen": 1794611424.7668815,
+    "ast_hash": "a9fac419be0817f9965e1c82394a10d2",
+    "semantic_hash": "a9fac419be0817f9965e1c82394a10d2"
+  },
+  "src/components/MathText.test.mjs": {
+    "mtime": 1794611023.260883,
+    "seen": 1794611424.7668815,
+    "ast_hash": "4bf9e6387c03c96885dbfc61d0112d54",
+    "semantic_hash": "4bf9e6387c03c96885dbfc61d0112d54"
+  },
+  "src/lib/mathText.js": {
+    "mtime": 1794611022.9697757,
+    "seen": 1794611424.7668815,
+    "ast_hash": "92d7bfc13f6931e42a9e62a82a33a43b",
+    "semantic_hash": "92d7bfc13f6931e42a9e62a82a33a43b"
+  },
+  "src/lib/mathText.test.js": {
+    "mtime": 1794611023.067853,
+    "seen": 1794611424.7668815,
+    "ast_hash": "3bc449d2e7695d06c93a8f387115ede5",
+    "semantic_hash": "3bc449d2e7695d06c93a8f387115ede5"
   }
 }

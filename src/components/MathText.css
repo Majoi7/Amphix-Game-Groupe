@@ -1,0 +1,51 @@
+.math-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.math-text .math-text__math {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.2em 0.05em;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 116 139 / 35%) transparent;
+}
+
+.math-text .math-text__math--display {
+  display: block;
+  width: 100%;
+  margin: 0.5em 0;
+}
+
+.math-text .katex {
+  white-space: nowrap;
+}
+
+/* Center short displays; grow wide expressions so their left edge stays reachable. */
+.math-text .katex-display {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+}
+
+.math-text .katex-display > .katex {
+  text-align: center;
+}
+
+.math-text .math-text__math::-webkit-scrollbar {
+  height: 4px;
+}
+
+.math-text .math-text__math::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 35%);
+  border-radius: 4px;
+}

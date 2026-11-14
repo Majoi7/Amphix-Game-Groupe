@@ -9,6 +9,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from
 import { Trophy, Clock, Target, Check, X, Share2, LogOut, Settings, Sparkles, Zap, Heart, Star, Flame, Volume1, Volume2 } from 'lucide-react';
 import AdminScreen from './components/AdminScreen';
 import LiveRankingScreen from './components/LiveRankingScreen';
+import MathText from './components/MathText';
 
 export const POINTS_PER_QUESTION = 10; // Score per correct answer (the server applies the same value)
 
@@ -1567,9 +1568,9 @@ function QuizScreen({ session, playerId, sounds, audioStarted, audioBlocked, pla
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -20, filter: 'blur(4px)' }}
             transition={{ duration: 0.3 }}
-            className="text-[24px] md:text-[28px] leading-tight font-black text-gray-800 mb-8 mt-2 whitespace-pre-wrap"
+            className="text-[24px] md:text-[28px] leading-tight font-black text-gray-800 mb-8 mt-2 min-w-0"
           >
-            {currentQ.text}
+            <MathText text={currentQ.text} />
           </motion.h2>
         </AnimatePresence>
 
@@ -1603,9 +1604,9 @@ function QuizScreen({ session, playerId, sounds, audioStarted, audioBlocked, pla
                   key={i}
                   disabled={answered}
                   onClick={() => handleOptionClick(i)}
-                  className={`relative flex items-center p-4 md:p-5 rounded-2xl font-bold text-lg md:text-xl transition-all duration-200 w-full text-left ${btnStateClass}`}
+                  className={`relative flex min-w-0 items-center p-4 md:p-5 rounded-2xl font-bold text-lg md:text-xl transition-all duration-200 w-full text-left ${btnStateClass}`}
                 >
-                  <motion.div
+                  <motion.span
                     animate={
                       answered && isActuallyCorrect
                         ? { scale: [1, 1.2, 1] }
@@ -1614,7 +1615,7 @@ function QuizScreen({ session, playerId, sounds, audioStarted, audioBlocked, pla
                         : {}
                     }
                     transition={{ duration: 0.3 }}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center border-2 mr-4 font-black transition-colors ${
+                    className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center border-2 mr-4 font-black transition-colors ${
                       isSelected && !answered
                         ? 'border-game-blue text-game-blue'
                         : answered && isActuallyCorrect
@@ -1631,16 +1632,17 @@ function QuizScreen({ session, playerId, sounds, audioStarted, audioBlocked, pla
                     ) : (
                       String.fromCharCode(65 + i)
                     )}
-                  </motion.div>
-                  <div className="flex-1">{opt}</div>
+                  </motion.span>
+                  <MathText text={opt} className="flex-1 min-w-0" />
                   {answered && isActuallyCorrect && (
-                    <motion.div
+                    <motion.span
+                      className="shrink-0 ml-2"
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                     >
                       <Star className="w-6 h-6 text-game-orange fill-current" />
-                    </motion.div>
+                    </motion.span>
                   )}
                 </motion.button>
               );

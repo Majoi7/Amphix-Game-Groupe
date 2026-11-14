@@ -20,37 +20,12 @@ import rateLimit from 'express-rate-limit';
 import { SERVER_QUESTIONS, getSanitizedQuestions, validateAnswer } from './questions.js';
 import { readAdminAuthConfig } from './adminAuth.js';
 
-// Temporary deployment diagnostics: never log values, hashes, or lengths.
-// NODE_ENV controls production mode; the other variables are required in production.
-const productionEnvNames = [
-  'NODE_ENV',
-  'ADMIN_PASSWORD_HASH',
-  'JWT_SECRET',
-  'PLAYER_JWT_SECRET',
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
-] as const;
-
-const logEnvPresence = (
-  stage: 'process-before-dotenv' | 'dotenv-file' | 'process-after-dotenv',
-  environment: Record<string, string | undefined>,
-) => {
-  for (const name of productionEnvNames) {
-    // Match the validations below: an empty value is ABSENT.
-    console.log(`[Config][${stage}] ${name}=${environment[name] ? 'PRESENT' : 'ABSENT'}`);
-  }
-};
-
-logEnvPresence('process-before-dotenv', process.env);
-
 // This path is relative to process.cwd(), not to this source/compiled file.
 // Missing .env is non-fatal, and injected variables must never be overwritten.
-const dotenvResult = dotenv.config({ path: './server/.env', override: false, quiet: true });
-console.log(`[Config][dotenv-file] FILE_READABLE=${dotenvResult.error ? 'ABSENT' : 'PRESENT'}`);
-logEnvPresence('dotenv-file', dotenvResult.parsed ?? {});
-logEnvPresence('process-after-dotenv', process.env);
+dotenv.config({ path: './server/.env', override: false, quiet: true });
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
 // Environment variable validation (fail before accepting admin logins).
@@ -144,9 +119,6 @@ app.use(express.json());
 // Supabase client (service role for backend)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-console.log('Supabase URL:', supabaseUrl ? 'present' : 'missing');
-console.log('Supabase Service Role Key:', supabaseServiceRoleKey ? 'present' : 'missing');
 
 if (!supabaseUrl || !supabaseServiceRoleKey) {
   throw new Error('Missing Supabase backend environment variables. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
